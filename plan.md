@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete.** Phases 5–10 status documents have been synchronized with the implemented code. The remaining acceptance boundary is machine-level validation on the target Apple M4 / 36 GB system for actual model loading, memory pressure, generation latency, and subjective visual quality; these cannot honestly be completed from CI or this repository-only environment.
+**Phases 0–10 repository implementation are complete.** Phases 5–10 status documents are synchronized with the implemented code, including timeline/subtitles, rendering, AI video provider integration, deterministic media strategy, deterministic QA, and bounded recovery/refinement. Target Apple M4 / 36 GB hardware acceptance remains a machine-level activity for actual model loading, memory pressure, generation latency, thermal behavior, and subjective visual quality.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -26,15 +26,16 @@ Render: 2 total attempts (initial + 1 retry)
 Delivered through Phase 10:
 
 - bounded image recovery with deterministic prompt refinement
-- bounded video recovery with timing-safe prompt refinement
+- bounded video recovery with timing-safe prompt refinement that never mutates canonical scene timing
 - recovery in project media orchestration and targeted scene regeneration
 - centralized configured video-provider construction
 - capability-validated deterministic FFmpeg fallback
 - explicit fallback provider/model/reason metadata
 - deterministic narration pad-or-trim duration correction
-- bounded final-render retry with partial-output cleanup
+- bounded final-render retry with renderer-owned partial-output cleanup
 - persisted recovery metadata in scene and render manifests
-- synchronized Phase 5–10 documentation
+- synchronized Phase 5–10 status documentation
+- no unused recovery wrapper retained in the render package
 
 ## Acceptance boundary
 
