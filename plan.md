@@ -68,11 +68,12 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - planning worker uses one local worker to avoid competing for unified memory with media generation
 - planning request validation is centralized in `app/job_api.py`; the unused duplicate planning router module was removed
 - background job API helpers and response boundaries are explicitly typed for strict mypy
+- web API helpers, dynamic JSON response boundaries, provider instances, and configuration access are explicitly typed for strict mypy
 - Ruff CI now enforces correctness-oriented `E`, `F`, and `B` rules; formatter handles layout and long embedded strings are exempted from E501, while Typer option/argument declarations are treated as intentional immutable calls
 - subtitle cue generation now uses explicit `zip(..., strict=True)` semantics
 - strict mypy configuration keeps heavy optional ML packages out of the CI environment while preserving type checking of application boundaries
 - corrected Python health-check field typing for strict mypy
-- typed the optional LTX video provider boundary
+- typed the optional LTX video provider
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
