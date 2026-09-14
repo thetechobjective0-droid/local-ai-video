@@ -90,6 +90,9 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - planning worker retries one failed Director run using persisted artifacts before marking the project failed
 - structured-output validation failures preserve Pydantic field-level diagnostics for repair prompts and persisted job errors
 - storyboard prompts minimize the LLM contract to required fields and let the application generate UUIDs
+- storyboard outputs materialize canonical `scene-XXXX.json` manifests and `timeline.json` after validated planning
+- resumed `storyboard_ready` projects revalidate storyboard timing against the project's target duration before accepting persisted output; stale/invalid timing forces storyboard regeneration instead of silently reusing it
+- storyboard reconciliation now deterministically persists SRT and WebVTT subtitles from scene narration
 - descriptive lifecycle logging now traces planning submission, configuration, Ollama health/model checks, Director stages, structured-output attempts/repairs, media job transitions, per-scene routing/generation, recovery/fallback decisions, progress and terminal outcomes
 - logs intentionally record operational metadata (stage, model, counts, timings and errors) rather than full user prompts or generated media payloads
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
