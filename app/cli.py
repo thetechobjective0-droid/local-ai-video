@@ -1,13 +1,18 @@
 """Command-line entry point."""
 
+import json
 from pathlib import Path
+from uuid import UUID
 
 import typer
 
 from app.config import load_config
 from app.director.project import create_plan, resume_plan
+from app.generation.images import generate_scene_image
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
+from app.models.scene import Scene
+from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.ollama import OllamaProvider
 from app.storage.filesystem import FilesystemStore
 
@@ -28,7 +33,36 @@ def _provider_and_store(config_path: Path | None) -> tuple[OllamaProvider, Files
         raise typer.BadParameter("only the local Ollama provider is supported in Phase 1")
     provider = OllamaProvider(app_config.llm.base_url)
     provider.require_health()
+    provider.require_model(app_config.llm.model)
     return provider, FilesystemStore(app_config.storage.root)
+
+
+def _image_provider_and_store(config_path: Path | None) -> tuple[DiffusersImageProvider, FilesystemStore]:
+    app_config = load_config(config_path)
+    configure_logging()
+    if not app_config.runtime.local_only:
+        raise typer.BadParameter("local_only must remain enabled")
+    if app_config.image.provider != "diffusers":
+        raise typer.BadParameter("only the local Diffusers image provider is supported in Phase 3")
+    provider = DiffusersImageProvider(
+        app_config.image.model_path,
+        device=app_config.image.device,
+    )
+    return provider, FilesystemStore(app_config.storage.root)
+
+
+def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
+    directory = store.project_dir(project_id)
+    for path in sorted(directory.glob("scene-*.json")):
+        if path.name.endswith("-image.json"):
+            continue
+        try:
+            scene = Scene.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if scene.id == scene_id:
+            return scene
+    raise typer.BadParameter(f"scene not found: {scene_id}")
 
 
 @app.command()
@@ -90,3 +124,31 @@ def resume(
         top_k=app_config.llm.top_k,
     )
     typer.echo(f"Resumed project: {directory}")
+
+
+@app.command("generate-scene")
+def generate_scene(
+    project_id: str,
+    scene_id: str,
+    seed: int | None = typer.Option(None, "--seed"),
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Generate one scene image using the configured local image provider."""
+    app_config = load_config(config)
+    provider, store = _image_provider_and_store(config)
+    project_uuid = UUID(project_id)
+    scene_uuid = UUID(scene_id)
+    scene = _load_scene(store, project_uuid, scene_uuid)
+    artifact, _ = generate_scene_image(
+        provider,
+        store,
+        project_uuid,
+        scene,
+        model=app_config.image.model_path.name,
+        width=app_config.image.width,
+        height=app_config.image.height,
+        steps=app_config.image.steps,
+        guidance_scale=app_config.image.guidance_scale,
+        seed=seed,
+    )
+    typer.echo(f"Generated image artifact: {artifact.id}")
