@@ -23,10 +23,10 @@ from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.ffmpeg_video import FFmpegVideoProvider
-from app.providers.ltx_video import LTXVideoProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.providers.video import VideoProvider
+from app.providers.factory import build_video_fallback, build_video_provider
 from app.qa.project import QAReport, validate_project
 from app.qa.report import write_qa_report
 from app.render.ffmpeg import FFmpegRenderer
@@ -78,16 +78,7 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
 def _video_provider_and_store(config_path: Path | None) -> tuple[VideoProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
-    if not app_config.runtime.local_only:
-        raise typer.BadParameter("local_only must remain enabled")
-    store = FilesystemStore(app_config.storage.root)
-    if app_config.video.provider == "ffmpeg_ken_burns":
-        return FFmpegVideoProvider(), store
-    if app_config.video.provider == "ltx_video":
-        if app_config.video.model_path is None:
-            raise typer.BadParameter("video.model_path is required for the local LTX provider")
-        return LTXVideoProvider(app_config.video.model_path, device=app_config.video.device, dtype=app_config.video.dtype), store
-    raise typer.BadParameter(f"unsupported local video provider: {app_config.video.provider}")
+    return build_video_provider(app_config), FilesystemStore(app_config.storage.root)
 
 
 def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
@@ -217,7 +208,7 @@ def generate_media(project_id: str, config: Path | None = typer.Option(None, "--
     image_provider, _ = _image_provider_and_store(config)
     capability = get_provider_capabilities(app_config.video.provider).video
     project_uuid = UUID(project_id)
-    results = generate_project_media(store, project_uuid, _load_scenes(store, project_uuid), video_provider=video_provider, image_provider=image_provider, fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None, video_capability=capability, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps)
+    results = generate_project_media(store, project_uuid, _load_scenes(store, project_uuid), video_provider=video_provider, image_provider=image_provider, fallback_provider=build_video_fallback(app_config), video_capability=capability, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps)
     for result in results:
         suffix = " (fallback)" if result.used_fallback else ""
         typer.echo(f"Scene {result.scene.index}: {result.selected_media_type.value}{suffix}")
@@ -265,11 +256,13 @@ def regenerate_scene(project_id: str, scene_id: str, stage: str = typer.Option("
             video_result = generate_scene_video_with_recovery(video_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
             scene = video_result.scene.model_copy(update={"metadata": {**video_result.scene.metadata, "video_recovery": {"attempts": video_result.attempts, "strategies": list(video_result.strategies), "fallback_used": False}}})
         except VideoAgentError:
-            fallback_provider = FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None
+            fallback_provider = build_video_fallback(app_config)
             if fallback_provider is None:
                 raise
             _, scene = generate_scene_video(fallback_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
-            scene = scene.model_copy(update={"metadata": {**scene.metadata, "video_recovery": {"attempts": 3, "strategies": ["original", "reduced_duration", "reduced_duration_aggressive"], "fallback_used": True}}})
+            fallback_name = getattr(fallback_provider, "provider_name", "unknown")
+            fallback_model = getattr(fallback_provider, "model_name", getattr(fallback_provider, "_model_name", "unknown"))
+            scene = scene.model_copy(update={"metadata": {**scene.metadata, "video_recovery": {"attempts": 3, "strategies": ["original", "simplified_motion_prompt", "conservative_motion_prompt"], "fallback_used": True, "fallback_provider": fallback_name, "fallback_model": fallback_model}}})
         store.write_json(store.project_dir(project_uuid), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
     report = validate_project(store, project_uuid)
     _write_project_qa(store, project_uuid, report)
