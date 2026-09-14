@@ -10,5 +10,20 @@ llm:
   top_p: 0.9
   top_k: 40
 
+image:
+  provider: diffusers
+  model_path: ./data/models/stable-diffusion-xl-base-1.0
+  device: mps
+  width: 1024
+  height: 576
+  steps: 30
+  guidance_scale: 7.0
+
+tts:
+  provider: macos_say
+  voice: null
+  rate: 180
+  sample_rate: 22050
+
 storage:
   root: ./data
