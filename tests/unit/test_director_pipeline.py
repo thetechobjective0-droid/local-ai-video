@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-import pytest
-
 from app.director.brief import CreativeBrief
 from app.director.director import build_brief, build_script, build_storyboard
 from app.providers.base import LLMRequest, LLMResponse
