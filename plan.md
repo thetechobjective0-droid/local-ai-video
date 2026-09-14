@@ -33,6 +33,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - planning job status endpoint
 - QA endpoint serializes the dataclass report correctly for FastAPI JSON responses
 - API/UI launch and operational documentation
+- launcher displays the actual loopback port used by Uvicorn (`8765`)
 
 ### Deferred by design
 
