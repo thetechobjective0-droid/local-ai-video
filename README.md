@@ -4,9 +4,9 @@ A local-only AI video production pipeline designed for Apple Silicon, initially 
 
 ## Current status
 
-**Phase 0 — Foundation in progress.**
+**Phase 3 — Local image generation implemented; M4 model acceptance pending.**
 
-The project currently contains the initial Python package, typed local-only configuration, environment health checks, CLI entry points, and Phase 0 tests.
+The project now includes the local Director pipeline, richer scene metadata, deterministic timing validation, a provider-agnostic image-generation contract, and a local Diffusers text-to-image backend designed for Apple Silicon MPS.
 
 ## Local-only architecture
 
@@ -20,10 +20,31 @@ GitHub is used for source control only. The application must not automatically u
 
 ## Development
 
-Install with `uv`:
+Install the base development environment with `uv`:
 
 ```bash
 uv sync --extra dev
+```
+
+For local Diffusers image generation, install the optional image stack:
+
+```bash
+uv sync --extra image
+```
+
+The image backend expects a **pre-downloaded local Diffusers model directory**. It uses `local_files_only=True`; it does not download model weights during generation.
+
+Configure the local model in YAML when needed:
+
+```yaml
+image:
+  provider: diffusers
+  model_path: ./data/models/stable-diffusion-xl-base-1.0
+  device: mps
+  width: 1024
+  height: 576
+  steps: 30
+  guidance_scale: 7.0
 ```
 
 Run the CLI:
@@ -46,6 +67,17 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
 ```
+
+## Image generation API
+
+The application boundary is provider-agnostic:
+
+```python
+class ImageProvider(Protocol):
+    def generate(self, request: ImageGenerationRequest) -> ImageResult: ...
+```
+
+A scene can be generated independently through the deterministic image service. The service persists the PNG, artifact metadata, generation parameters, SHA-256 output hash, and updated scene reference.
 
 ## Documentation
 
