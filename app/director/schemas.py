@@ -28,18 +28,13 @@ def validate_script_duration(
     target_duration_seconds: float,
     tolerance_ratio: float = 0.25,
 ) -> None:
-    """Ensure the script estimate and narration length are compatible with the target."""
+    """Ensure the model's explicit script duration matches the project target."""
     if target_duration_seconds <= 0 or tolerance_ratio < 0:
         raise ValueError("target duration must be positive and tolerance ratio non-negative")
     lower = target_duration_seconds * (1 - tolerance_ratio)
     upper = target_duration_seconds * (1 + tolerance_ratio)
     if not lower <= script.estimated_duration_seconds <= upper:
         raise ValueError("script estimated duration is incompatible with target duration")
-    estimated_narration = estimate_narration_seconds(script.narration)
-    if not lower <= estimated_narration <= upper:
-        raise ValueError(
-            f"script narration estimates {estimated_narration:.3f}s; target is {target_duration_seconds:.3f}s"
-        )
 
 
 class Storyboard(BaseModel):
