@@ -114,7 +114,9 @@ def health() -> dict[str, str]:
 def projects() -> list[dict[str, Any]]:
     store = _store()
     result: list[dict[str, Any]] = []
-    for path in sorted((store.root / "projects").iterdir() if (store.root / "projects").exists() else []):
+    for path in sorted(
+        (store.root / "projects").iterdir() if (store.root / "projects").exists() else []
+    ):
         project_file = path / "project.json"
         if not path.is_dir() or not project_file.is_file():
             continue
@@ -146,7 +148,9 @@ def project(project_id: UUID) -> dict[str, Any]:
             )
         except (OSError, ValueError):
             continue
-    logger.info("[web] GET project=%s scenes=%s status=%s", project_id, len(scenes), value.status.value)
+    logger.info(
+        "[web] GET project=%s scenes=%s status=%s", project_id, len(scenes), value.status.value
+    )
     return {"project": value.model_dump(mode="json"), "scenes": scenes}
 
 
@@ -185,7 +189,9 @@ def qa(project_id: UUID) -> dict[str, Any]:
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="project not found")
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    logger.info("[web] QA project=%s passed=%s issues=%s", project_id, report.passed, len(report.issues))
+    logger.info(
+        "[web] QA project=%s passed=%s issues=%s", project_id, report.passed, len(report.issues)
+    )
     return asdict(report)
 
 
@@ -227,7 +233,10 @@ def subtitles_head(project_id: UUID, format: str) -> Response:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="subtitle file not found")
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
-    return Response(status_code=200, headers={"content-type": media_type, "content-length": str(path.stat().st_size)})
+    return Response(
+        status_code=200,
+        headers={"content-type": media_type, "content-length": str(path.stat().st_size)},
+    )
 
 
 @app.get("/api/projects/{project_id}/scenes/{scene_id}/image")
@@ -265,20 +274,30 @@ def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, Any]:
             **artifact,
             "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}",
         }
-    logger.info("[web] artifacts project=%s scene=%s types=%s", project_id, scene_id, ",".join(artifacts))
+    logger.info(
+        "[web] artifacts project=%s scene=%s types=%s", project_id, scene_id, ",".join(artifacts)
+    )
     return {"scene_id": str(scene.id), "artifacts": artifacts}
 
 
 @app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
 def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> dict[str, Any]:
-    logger.info("[web] regenerate START project=%s scene=%s stage=%s", project_id, scene_id, request.stage)
+    logger.info(
+        "[web] regenerate START project=%s scene=%s stage=%s", project_id, scene_id, request.stage
+    )
     config = _local_config()
     store = FilesystemStore(config.storage.root)
     scene = _scene(store, project_id, scene_id)
     try:
         if request.stage == "image":
-            logger.info("[web] image provider init model=%s device=%s", config.image.model_path, config.image.device)
-            image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
+            logger.info(
+                "[web] image provider init model=%s device=%s",
+                config.image.model_path,
+                config.image.device,
+            )
+            image_provider = DiffusersImageProvider(
+                config.image.model_path, device=config.image.device
+            )
             image_result = generate_scene_image_with_recovery(
                 image_provider,
                 store,
@@ -304,10 +323,17 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
             _persist_scene(store, project_id, scene)
             attempts, strategies = image_result.attempts, list(image_result.strategies)
         elif request.stage == "audio":
-            logger.info("[web] audio provider init voice=%s rate=%s", config.tts.voice, config.tts.rate)
+            logger.info(
+                "[web] audio provider init voice=%s rate=%s", config.tts.voice, config.tts.rate
+            )
             audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
             _, updated_scene = generate_scene_audio(
-                audio_provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate
+                audio_provider,
+                store,
+                project_id,
+                scene,
+                voice=config.tts.voice,
+                rate=config.tts.rate,
             )
             scene = updated_scene
             attempts, strategies = 1, ["original"]
@@ -337,14 +363,33 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
             _persist_scene(store, project_id, scene)
             attempts, strategies = video_result.attempts, list(video_result.strategies)
     except ProviderUnavailableError as exc:
-        logger.warning("[web] regenerate unavailable project=%s scene=%s stage=%s error=%s", project_id, scene_id, request.stage, exc)
-        raise HTTPException(status_code=503, detail={"code": "provider_unavailable", "message": str(exc)}) from None
+        logger.warning(
+            "[web] regenerate unavailable project=%s scene=%s stage=%s error=%s",
+            project_id,
+            scene_id,
+            request.stage,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503, detail={"code": "provider_unavailable", "message": str(exc)}
+        ) from None
     except Exception:
-        logger.exception("[web] regenerate FAILED project=%s scene=%s stage=%s", project_id, scene_id, request.stage)
+        logger.exception(
+            "[web] regenerate FAILED project=%s scene=%s stage=%s",
+            project_id,
+            scene_id,
+            request.stage,
+        )
         raise
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    logger.info("[web] regenerate COMPLETE project=%s scene=%s stage=%s qa_passed=%s", project_id, scene_id, request.stage, report.passed)
+    logger.info(
+        "[web] regenerate COMPLETE project=%s scene=%s stage=%s qa_passed=%s",
+        project_id,
+        scene_id,
+        request.stage,
+        report.passed,
+    )
     return {
         "scene": scene.model_dump(mode="json"),
         "attempts": attempts,
