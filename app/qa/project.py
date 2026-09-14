@@ -73,6 +73,7 @@ def validate_project(
                 expected_resolution=timeline.resolution if timeline else project.resolution,
                 ffprobe_command=ffprobe_command,
             )
+            validate_audio_quality(final_video, ffmpeg_command=ffmpeg_command)
         except (VideoAgentError, ValueError) as exc:
             failures.append(QAFailure("final-video", str(exc)))
 
@@ -138,10 +139,9 @@ def _validate_scene_assets(
                 failures.append(QAFailure(scope, "audio asset UUID does not match scene manifest"))
             try:
                 validate_audio(artifact.path, expected_duration=scene.duration_seconds, ffprobe_command=ffprobe_command)
-                quality = validate_audio_quality(artifact.path, ffmpeg_command=ffmpeg_command)
-                artifact.parameters["qa_audio_quality"] = quality
+                validate_audio_quality(artifact.path, ffmpeg_command=ffmpeg_command)
             except (VideoAgentError, ValueError) as exc:
-                failures.append(QAFailure(scope, f"audio quality QA failed: {exc}"))
+                failures.append(QAFailure(scope, f"audio QA failed: {exc}"))
     if scene.video_asset is not None:
         artifact = _load_artifact(directory, f"scene-{scene.index:04d}-video.json", failures)
         if artifact is not None:
