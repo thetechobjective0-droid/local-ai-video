@@ -66,6 +66,18 @@ class PlanningJobManager:
             raise FileNotFoundError(str(job_id))
         return PlanningJob.model_validate_json(path.read_text(encoding="utf-8"))
 
+    def list(self, project_id: UUID | None = None) -> list[PlanningJob]:
+        jobs_dir = self.store.root / "planning-jobs"
+        jobs: list[PlanningJob] = []
+        for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
+            try:
+                job = PlanningJob.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if project_id is None or job.project_id == project_id:
+                jobs.append(job)
+        return sorted(jobs, key=lambda item: item.created_at, reverse=True)
+
     def submit(self, project_id: UUID) -> PlanningJob:
         now = datetime.now(timezone.utc)
         job = PlanningJob(
