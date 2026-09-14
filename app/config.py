@@ -42,6 +42,13 @@ class TTSConfig(BaseModel):
     sample_rate: int = Field(default=22050, ge=8000, le=48000)
 
 
+class VideoConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = "ffmpeg_ken_burns"
+    device: str = Field(default="mps", pattern="^(mps|cpu)$")
+    fps: int = Field(default=16, ge=1, le=60)
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     root: Path = Path("./data")
@@ -53,6 +60,7 @@ class AppConfig(BaseModel):
     llm: LLMConfig = LLMConfig()
     image: ImageConfig = ImageConfig()
     tts: TTSConfig = TTSConfig()
+    video: VideoConfig = VideoConfig()
     storage: StorageConfig = StorageConfig()
 
 
