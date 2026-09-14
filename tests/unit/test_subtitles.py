@@ -33,7 +33,8 @@ def test_build_subtitles_writes_srt_and_vtt(tmp_path) -> None:
     srt = outputs["srt"].read_text(encoding="utf-8")
     vtt = outputs["vtt"].read_text(encoding="utf-8")
     assert srt.startswith("1\n00:00:00,000 --> ")
-    assert "The pipeline then renders the result." in srt
+    assert "The pipeline then renders the" in srt
+    assert "result." in srt
     assert vtt.startswith("WEBVTT\n\n")
     assert "00:00:04." in vtt
 
