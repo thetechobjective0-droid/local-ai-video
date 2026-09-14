@@ -249,6 +249,8 @@ def generate_video(
         store,
         project_uuid,
         scene,
+        width=app_config.video.width,
+        height=app_config.video.height,
         fps=app_config.video.fps,
         seed=seed,
     )
