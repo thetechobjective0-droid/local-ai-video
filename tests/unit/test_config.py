@@ -11,3 +11,11 @@ def test_config_is_local_only_by_default() -> None:
 def test_config_has_safe_storage_root() -> None:
     config = load_config()
     assert str(config.storage.root) == "data"
+
+
+def test_config_has_local_image_defaults() -> None:
+    config = load_config()
+    assert config.image.provider == "diffusers"
+    assert config.image.device == "mps"
+    assert config.image.width == 1024
+    assert config.image.height == 576
