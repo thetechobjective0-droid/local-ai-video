@@ -2,11 +2,13 @@
 
 ## Current implementation checkpoint
 
-Phase 0 is code-complete pending validation on the target M4 Mac. Phase 1 now includes the local Ollama Director, validated brief/script/storyboard generation, bounded structured-output repair, versioned prompts, persisted project state, atomic JSON artifacts, and expanded boundary tests.
+Phase 0 is code-complete pending validation on the target M4 Mac. Phase 1 now includes the local Ollama Director, validated brief/script/storyboard generation, bounded structured-output repair, versioned prompts, persisted project state, atomic JSON artifacts, resumable Director execution, generation-run metadata, and Ollama model preflight checks.
 
 The detailed architecture and phased plan below remains the source of truth. The immediate next milestone is **real M4 acceptance of the Phase 1 Director pipeline**, followed by the first local image-provider vertical slice.
 
-## 1. Vision
+---
+
+# 1. Vision
 
 Build a local-first AI video production system for Apple Silicon that accepts a natural-language idea and turns it into a finished video through a reproducible, inspectable pipeline.
 
@@ -489,12 +491,13 @@ Use the local LLM as the creative director while keeping all model output strict
 - Safe artifact filename validation.
 - CLI wiring to configured local Ollama settings.
 - Unit and integration-style tests for retry exhaustion, path safety, storyboard timing, project failure persistence, and Ollama request boundaries.
+- Automatic Director resume from the first missing or invalid stage.
+- Persistent per-stage `GenerationRun` metadata.
+- Ollama installed-model preflight before generation.
 
 ## Remaining
 
 - real M4 Ollama inference acceptance
-- resume command that discovers the first incomplete Director stage
-- persisted generation-run metadata for each LLM stage
 - richer canonical Scene schema from the full Phase 2 model
 - script duration/narration compatibility validation
 
@@ -759,7 +762,7 @@ On restart:
 4. Mark missing/corrupt outputs incomplete.
 5. Resume from first incomplete stage.
 
-Phase 1 now persists stage status, but full automatic resume discovery remains pending.
+Phase 1 now includes automatic Director-stage resume and persisted GenerationRun records. Full artifact/hash verification and cross-stage recovery remain future work.
 
 ---
 
@@ -885,7 +888,7 @@ and executed on the actual Apple Silicon environment.
 - subprocess timeout
 - resume behavior
 
-Current Phase 1 tests cover retry limits, storyboard duration/timing, project failure persistence, filesystem filename safety, and Ollama request validation. The remaining hardware and end-to-end suites stay pending.
+Current Phase 1 tests cover retry limits, storyboard duration/timing, project failure persistence, filesystem filename safety, Ollama request validation, model preflight, and Director resume behavior. The remaining hardware and end-to-end suites stay pending.
 
 ---
 
@@ -1130,9 +1133,10 @@ Phase 1 progress:
 - [x] atomic JSON artifact persistence
 - [x] versioned Director prompts
 - [x] boundary and failure-path tests
+- [x] automatic Director resume discovery
+- [x] persisted GenerationRun metadata
+- [x] Ollama installed-model preflight
 - [ ] real M4 inference acceptance
-- [ ] automatic resume discovery
-- [ ] generation-run metadata
 
 ---
 
@@ -1189,11 +1193,15 @@ The plan is updated as implementation progresses. Each meaningful implementation
 - Changed project planning to persist the project before expensive Director stages and record stage status after each successful artifact.
 - Added atomic JSON artifact writes and simple-filename path safety.
 - Added tests for retry exhaustion, storyboard timing, project failure persistence, filesystem safety, and Ollama request/response boundaries.
+- Added automatic Director resume from the first missing or invalid stage.
+- Added persistent per-stage GenerationRun metadata for observability and recovery.
+- Added Ollama installed-model preflight so configured models fail clearly before expensive generation.
+- Added regression coverage for model-list parsing and missing-model failures.
 
 **Status:** CODE COMPLETE FOR CURRENT DIRECTOR SLICE — LOCAL M4 ACCEPTANCE PENDING.
 
 ### Latest implementation synchronization
 
-The latest implementation commit is `07d088d00bb875d7846dc30af0ea7fce32e38800` (`test: harden Phase 1 Director boundaries`). It adds the Phase 1 failure-path and provider-boundary tests and removes an unnecessary test fixture construction.
+The latest implementation work adds automatic resume, GenerationRun persistence, and Ollama installed-model preflight. The repository is now ready for real M4 acceptance of the Director path.
 
-**Next:** run the documented quality checks on the M4 Mac, perform one real Ollama Director generation using an installed local model, then implement automatic resume discovery and generation-run metadata before starting the local image provider.
+**Next:** on the M4 Mac run `make check`, `make doctor`, verify the configured Ollama model is installed, and perform one real `video-agent create` run. Then begin the richer Phase 2 Scene schema and local image-provider vertical slice.
