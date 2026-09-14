@@ -14,7 +14,7 @@ def test_prefers_image_to_video_when_supported() -> None:
     )
     selected = select_media_type(
         scene,
-        video=VideoCapability(image_to_video=True, max_duration_seconds=5),
+        video=VideoCapability(image_to_video=True, max_duration_seconds=5, image_motion=True),
     )
     assert selected is MediaType.IMAGE_TO_VIDEO
 
@@ -29,7 +29,7 @@ def test_falls_back_when_video_duration_is_unsupported() -> None:
     )
     selected = select_media_type(
         scene,
-        video=VideoCapability(image_to_video=True, max_duration_seconds=5),
+        video=VideoCapability(image_to_video=True, max_duration_seconds=5, image_motion=True),
     )
     assert selected is MediaType.IMAGE_MOTION
 
@@ -64,3 +64,15 @@ def test_text_to_video_is_used_only_when_supported() -> None:
     )
     selected = select_media_type(scene, video=VideoCapability(text_to_video=True))
     assert selected is MediaType.TEXT_TO_VIDEO
+
+
+def test_motion_requires_explicit_provider_capability() -> None:
+    scene = Scene(
+        index=1,
+        start_seconds=0,
+        duration_seconds=4,
+        preferred_media_type=MediaType.IMAGE_MOTION,
+        fallback_media_type=MediaType.STATIC_IMAGE,
+    )
+    selected = select_media_type(scene, video=VideoCapability(image_motion=False))
+    assert selected is MediaType.STATIC_IMAGE
