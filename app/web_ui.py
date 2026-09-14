@@ -1,0 +1,29 @@
+"""Minimal browser UI served by the local API."""
+
+from fastapi.responses import HTMLResponse
+
+from app.web import app
+
+
+HTML = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Local AI Video</title>
+<style>body{font:15px system-ui;margin:0;background:#111;color:#eee}main{max-width:1100px;margin:auto;padding:28px}section{background:#1b1b1b;padding:18px;border-radius:12px;margin:14px 0}input,textarea,button{font:inherit;padding:9px;border-radius:7px;border:1px solid #444;background:#222;color:#eee}input,textarea{width:100%;box-sizing:border-box;margin:6px 0 12px}button{cursor:pointer}button:hover{background:#333}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px}.scene{border:1px solid #333;padding:12px;border-radius:9px}pre{white-space:pre-wrap}.ok{color:#7ddc8b}.bad{color:#ff7777}</style></head>
+<body><main><h1>Local AI Video</h1><p>Local-only generation dashboard</p>
+<section><h2>New project</h2><textarea id="prompt" rows="4" placeholder="Describe the video you want..."></textarea><div class="grid"><label>Duration <input id="duration" type="number" value="60" min="1"></label><label>Style <input id="style" value="cinematic"></label><label>Aspect ratio <input id="ratio" value="16:9"></label></div><button onclick="createProject()">Create project</button><pre id="createResult"></pre></section>
+<section><h2>Projects</h2><button onclick="loadProjects()">Refresh</button><div id="projects"></div></section>
+<section id="detail" hidden><h2 id="title"></h2><pre id="meta"></pre><div id="scenes" class="grid"></div><h3>QA</h3><pre id="qa"></pre><button id="videoButton" hidden>Open final video</button></section>
+<script>
+const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+async function api(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw Error(t||r.status);return t?JSON.parse(t):null}
+async function createProject(){const out=document.querySelector('#createResult');out.textContent='Creating...';try{const p=await api('/api/projects',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:document.querySelector('#prompt').value,duration:Number(document.querySelector('#duration').value),style:document.querySelector('#style').value,aspect_ratio:document.querySelector('#ratio').value})});out.textContent=JSON.stringify(p,null,2);await loadProjects()}catch(e){out.textContent=e.message}}
+async function loadProjects(){const box=document.querySelector('#projects');try{const ps=await api('/api/projects');box.innerHTML=ps.length?ps.map(p=>`<div class="scene"><b>${esc(p.title)}</b><p>${esc(p.status)}</p><button onclick="openProject('${p.id}')">Open</button></div>`).join(''):'No projects yet.'}catch(e){box.textContent=e.message}}
+async function openProject(id){try{const d=await api('/api/projects/'+id);document.querySelector('#detail').hidden=false;document.querySelector('#title').textContent=d.project.title;document.querySelector('#meta').textContent=JSON.stringify(d.project,null,2);document.querySelector('#scenes').innerHTML=d.scenes.map(s=>`<div class="scene"><b>Scene ${s.index}</b><p>${esc(s.visual_description)}</p><p>${esc(s.status)}</p><button onclick="regen('${id}','${s.id}')">Regenerate video</button></div>`).join('');const q=await api('/api/projects/'+id+'/qa');document.querySelector('#qa').innerHTML=q.passed?'<span class="ok">PASS</span>':`<span class="bad">FAIL</span>\n${esc(JSON.stringify(q.failures,null,2))}`;const vb=document.querySelector('#videoButton');vb.hidden=false;vb.onclick=()=>window.open('/api/projects/'+id+'/video','_blank')}catch(e){alert(e.message)}}
+async function regen(pid,sid){try{await api(`/api/projects/${pid}/scenes/${sid}/regenerate-video`,{method:'POST'});await openProject(pid)}catch(e){alert(e.message)}}
+loadProjects();
+</script></main></body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    return HTML
