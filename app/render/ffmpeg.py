@@ -126,11 +126,10 @@ class FFmpegRenderer:
         concat_inputs: list[str] = []
         input_index = 0
         for scene_number, scene in enumerate(timeline.scenes):
-            media = (
-                assets.get(scene.video_asset or scene.image_asset)
-                if (scene.video_asset or scene.image_asset)
-                else None
-            )
+            asset_id = scene.video_asset or scene.image_asset
+            if asset_id is None:
+                raise VideoAgentError(f"scene {scene.index} has no renderable image/video artifact")
+            media = assets.get(asset_id)
             if media is None:
                 raise VideoAgentError(f"scene {scene.index} has no renderable image/video artifact")
             media_path = _resolve_artifact_path(directory, media)
