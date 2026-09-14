@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. **Phase 10 — Agentic Recovery and Refinement is now in progress**, with bounded recovery foundation, project-level image/video recovery, and targeted scene regeneration recovery integrated. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
+Phase 0–9 deterministic implementation is complete. **Phase 10 — Agentic Recovery and Refinement is in progress**, with bounded recovery foundation, project-level image/video recovery, targeted scene regeneration recovery, centralized video-provider construction, and timing-safe video recovery refinement implemented. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level activity.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -10,7 +10,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 19. Phase 10 — Agentic Recovery and Refinement
 
-**Status: IN PROGRESS — TARGETED REGENERATION RECOVERY INTEGRATED**
+**Status: IN PROGRESS — VIDEO RECOVERY HARDENED**
 
 Recovery is explicitly finite and deterministic. Implemented `RecoveryPolicy`, `RecoveryResult`, and `run_bounded()` with zero-based attempt numbers supplied to each operation.
 
@@ -23,13 +23,15 @@ Video:  3 total attempts (initial + 2 retries)
 Render: 2 total attempts (initial + 1 retry)
 ```
 
-Project media orchestration invokes bounded image recovery when a scene has no image asset and bounded video recovery for image-to-video and image-motion generation. Targeted `regenerate-scene` now uses the same bounded image/video recovery paths and records recovery metadata. Video recovery failure can fall back to the deterministic FFmpeg motion provider when the configured provider is not already FFmpeg.
+Project media orchestration invokes bounded image recovery when a scene has no image asset and bounded video recovery for image-to-video and image-motion generation. Targeted `regenerate-scene` uses the same bounded image/video recovery paths. Video recovery now refines prompts without mutating the canonical scene duration, preventing recovery from corrupting storyboard/timeline timing.
 
-Next Phase 10 increments:
+Provider construction is centralized for configured local video providers, with deterministic FFmpeg fallback construction kept in the provider layer boundary.
 
-1. Strengthen provider fallback policy and record fallback metadata.
+Remaining Phase 10 increments:
+
+1. Integrate and record hardened provider fallback policy everywhere.
 2. Add narration duration correction.
 3. Add bounded render recovery.
-4. Complete Phase 10 acceptance.
+4. Complete Phase 10 acceptance and synchronize Phase 5–10 documentation.
 
 ---
