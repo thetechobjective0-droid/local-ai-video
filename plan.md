@@ -64,6 +64,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - stale queued/running jobs are marked `interrupted` on process restart
 - persistent local planning job manifests under `planning-jobs`
 - planning worker uses one local worker to avoid competing for unified memory with media generation
+- planning request validation is centralized in `app/job_api.py`; the unused duplicate planning router module was removed
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
