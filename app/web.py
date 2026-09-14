@@ -1,8 +1,8 @@
 """Local-only HTTP API for the video generation application."""
 
-from pathlib import Path
 from uuid import UUID
 
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -11,8 +11,8 @@ from app.config import load_config
 from app.director.project import create_plan, resume_plan
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.scene import Scene
-from app.providers.ollama import OllamaProvider
 from app.providers.factory import build_video_provider
+from app.providers.ollama import OllamaProvider
 from app.qa.project import validate_project
 from app.qa.report import write_qa_report
 from app.storage.filesystem import FilesystemStore
@@ -21,10 +21,11 @@ app = FastAPI(title="Local AI Video", version="0.1.0")
 
 
 class CreateProjectRequest(BaseModel):
+    model_config = {"extra": "forbid"}
     prompt: str = Field(min_length=1)
     duration: float = Field(default=60.0, gt=0)
-    style: str = "cinematic"
-    aspect_ratio: str = "16:9"
+    style: str = Field(default="cinematic", min_length=1)
+    aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
 
 
 def _store() -> FilesystemStore:
@@ -42,6 +43,13 @@ def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
         if scene.id == scene_id:
             return scene
     raise HTTPException(status_code=404, detail="scene not found")
+
+
+def _local_config():
+    config = load_config(None)
+    if not config.runtime.local_only:
+        raise HTTPException(status_code=503, detail="local_only must remain enabled")
+    return config
 
 
 @app.get("/api/health")
@@ -68,9 +76,9 @@ def projects() -> list[dict[str, object]]:
 
 @app.post("/api/projects", status_code=201)
 def create_project(request: CreateProjectRequest) -> dict[str, object]:
-    config = load_config(None)
-    if not config.runtime.local_only or config.llm.provider != "ollama":
-        raise HTTPException(status_code=503, detail="local Ollama configuration is required")
+    config = _local_config()
+    if config.llm.provider != "ollama":
+        raise HTTPException(status_code=503, detail="local Ollama provider is required")
     provider = OllamaProvider(config.llm.base_url)
     provider.require_health()
     provider.require_model(config.llm.model)
@@ -104,7 +112,9 @@ def project(project_id: UUID) -> dict[str, object]:
 
 @app.post("/api/projects/{project_id}/resume")
 def resume(project_id: UUID) -> dict[str, str]:
-    config = load_config(None)
+    config = _local_config()
+    if config.llm.provider != "ollama":
+        raise HTTPException(status_code=503, detail="local Ollama provider is required")
     provider = OllamaProvider(config.llm.base_url)
     provider.require_health()
     provider.require_model(config.llm.model)
@@ -118,25 +128,32 @@ def resume(project_id: UUID) -> dict[str, str]:
 @app.get("/api/projects/{project_id}/qa")
 def qa(project_id: UUID) -> dict[str, object]:
     store = _store()
-    report = validate_project(store, project_id)
+    try:
+        report = validate_project(store, project_id)
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="project not found") from None
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
     return report.model_dump(mode="json")
 
 
 @app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate-video")
 def regenerate_video(project_id: UUID, scene_id: UUID) -> dict[str, object]:
-    config = load_config(None)
+    config = _local_config()
     store = FilesystemStore(config.storage.root)
     scene = _scene(store, project_id, scene_id)
     provider = build_video_provider(config)
-    result = generate_scene_video_with_recovery(provider, store, project_id, scene,
-                                                 width=config.video.width,
-                                                 height=config.video.height,
-                                                 fps=config.video.fps)
+    result = generate_scene_video_with_recovery(
+        provider, store, project_id, scene, width=config.video.width,
+        height=config.video.height, fps=config.video.fps,
+    )
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    return {"scene": result.scene.model_dump(mode="json"), "attempts": result.attempts,
-            "strategies": list(result.strategies), "qa_passed": report.passed}
+    return {
+        "scene": result.scene.model_dump(mode="json"),
+        "attempts": result.attempts,
+        "strategies": list(result.strategies),
+        "qa_passed": report.passed,
+    }
 
 
 @app.get("/api/projects/{project_id}/video")
@@ -145,3 +162,8 @@ def final_video(project_id: UUID) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="final video not found")
     return FileResponse(path, media_type="video/mp4", filename="final.mp4")
+
+
+def run() -> None:
+    """Run the API on loopback only."""
+    uvicorn.run(app, host="127.0.0.1", port=8765)
