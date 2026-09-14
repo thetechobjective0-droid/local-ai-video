@@ -38,8 +38,16 @@ def test_acceptance_report_serializes_checks() -> None:
         platform="Darwin",
         machine="arm64",
         checks=(AcceptanceCheck("ffmpeg", True, "/usr/bin/ffmpeg"),),
-        resource_before={"total_memory_bytes": 10, "available_memory_bytes": 8, "free_disk_bytes": 7},
-        resource_after={"total_memory_bytes": 10, "available_memory_bytes": 6, "free_disk_bytes": 6},
+        resource_before={
+            "total_memory_bytes": 10,
+            "available_memory_bytes": 8,
+            "free_disk_bytes": 7,
+        },
+        resource_after={
+            "total_memory_bytes": 10,
+            "available_memory_bytes": 6,
+            "free_disk_bytes": 6,
+        },
     )
 
     payload = report.to_dict()
