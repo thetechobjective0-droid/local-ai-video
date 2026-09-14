@@ -18,6 +18,7 @@ from app.logging import configure_logging
 from app.models.scene import Scene
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.ffmpeg_video import FFmpegVideoProvider
+from app.providers.ltx_video import LTXVideoProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.render.ffmpeg import FFmpegRenderer
@@ -66,15 +67,23 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _video_provider_and_store(config_path: Path | None) -> tuple[FFmpegVideoProvider, FilesystemStore]:
+def _video_provider_and_store(config_path: Path | None):
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
         raise typer.BadParameter("local_only must remain enabled")
-    if app_config.video.provider != "ffmpeg_ken_burns":
-        raise typer.BadParameter("only the deterministic local FFmpeg video provider is supported in Phase 7")
-    provider = FFmpegVideoProvider()
-    return provider, FilesystemStore(app_config.storage.root)
+    store = FilesystemStore(app_config.storage.root)
+    if app_config.video.provider == "ffmpeg_ken_burns":
+        return FFmpegVideoProvider(), store
+    if app_config.video.provider == "ltx_video":
+        if app_config.video.model_path is None:
+            raise typer.BadParameter("video.model_path is required for the local LTX provider")
+        return LTXVideoProvider(
+            app_config.video.model_path,
+            device=app_config.video.device,
+            dtype=app_config.video.dtype,
+        ), store
+    raise typer.BadParameter(f"unsupported local video provider: {app_config.video.provider}")
 
 
 def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
