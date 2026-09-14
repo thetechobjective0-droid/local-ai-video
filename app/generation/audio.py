@@ -18,8 +18,9 @@ def generate_scene_audio(
     *,
     voice: str | None = None,
     rate: int = 180,
+    ffmpeg_command: str = "ffmpeg",
 ) -> tuple[Artifact, Scene]:
-    """Synthesize scene narration and persist its metadata atomically."""
+    """Synthesize narration, correct duration, and persist metadata atomically."""
     if not scene.narration.strip():
         raise ValueError(f"scene {scene.id} has no narration")
     directory = store.project_dir(project_id)
@@ -64,15 +65,18 @@ def generate_scene_audio(
             **result.metadata,
         },
     )
-    store.write_json(
-        directory,
-        f"scene-{scene.index:04d}-audio.json",
-        artifact.model_dump(mode="json"),
-    )
+    store.write_json(directory, f"scene-{scene.index:04d}-audio.json", artifact.model_dump(mode="json"))
     updated_scene = scene.model_copy(update={"audio_asset": artifact.id})
-    store.write_json(
-        directory,
-        f"scene-{scene.index:04d}.json",
-        updated_scene.model_dump(mode="json"),
+    store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
+
+    from app.generation.audio_recovery import correct_scene_audio_duration
+
+    corrected_artifact, corrected_scene = correct_scene_audio_duration(
+        store,
+        project_id,
+        updated_scene,
+        ffmpeg_command=ffmpeg_command,
     )
-    return artifact, updated_scene
+    if corrected_artifact.id != artifact.id:
+        raise VideoAgentError("audio duration correction changed the artifact identity")
+    return corrected_artifact, corrected_scene
