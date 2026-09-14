@@ -23,7 +23,13 @@ def parse_json(text: str, model: type[T]) -> T:
     try:
         return model.model_validate(data)
     except ValidationError as exc:
-        raise StructuredOutputError("model JSON failed schema validation") from exc
+        details = "; ".join(
+            f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
+            for error in exc.errors()
+        )
+        raise StructuredOutputError(
+            f"model JSON failed schema validation: {details}"
+        ) from exc
 
 
 def generate_validated(
