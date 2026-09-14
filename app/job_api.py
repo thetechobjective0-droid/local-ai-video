@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import load_config
-from app.models.project import VideoProject
+from app.models.project import ProjectStatus, VideoProject
 from app.orchestrator.jobs import MediaJobManager, get_job_manager
 from app.orchestrator.planning_jobs import PlanningJobManager, get_planning_job_manager
 from app.storage.filesystem import FilesystemStore
@@ -36,6 +36,19 @@ def _manager() -> MediaJobManager:
 
 def _planning_manager() -> PlanningJobManager:
     return get_planning_job_manager(_store())
+
+
+def _planning_job_response(store: FilesystemStore, job: Any) -> dict[str, Any]:
+    """Expose planning completion when the durable project is already storyboard-ready.
+
+    A synchronous Resume can finish planning after an older background job has failed.
+    The project status is the authoritative planning result, so the job API must not
+    report a stale failed state over a successfully materialized storyboard.
+    """
+    project = store.load_project(job.project_id)
+    if project.status == ProjectStatus.STORYBOARD_READY and job.state != "completed":
+        job = job.model_copy(update={"state": "completed", "completed_stage": "storyboard", "error": None})
+    return job.model_dump(mode="json")
 
 
 @router.post("/api/projects/{project_id}/jobs/media", status_code=202)
@@ -96,15 +109,18 @@ def create_project_async(request: CreateProjectRequest) -> dict[str, Any]:
 
 @router.get("/api/projects/{project_id}/planning-job")
 def planning_job(project_id: UUID) -> dict[str, Any]:
+    store = _store()
     jobs = _planning_manager().list(project_id)
     if not jobs:
         raise HTTPException(status_code=404, detail="planning job not found")
-    return jobs[0].model_dump(mode="json")
+    return _planning_job_response(store, jobs[0])
 
 
 @router.get("/api/planning-jobs/{job_id}")
 def get_planning_job(job_id: UUID) -> dict[str, Any]:
+    manager = _planning_manager()
     try:
-        return _planning_manager().get(job_id).model_dump(mode="json")
+        job = manager.get(job_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="planning job not found") from None
+    return _planning_job_response(manager.store, job)
