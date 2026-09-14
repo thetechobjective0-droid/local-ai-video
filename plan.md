@@ -69,6 +69,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - planning request validation is centralized in `app/job_api.py`; the unused duplicate planning router module was removed
 - Ruff CI now enforces correctness-oriented `E`, `F`, and `B` rules; formatter handles layout and long embedded strings are exempted from E501, while Typer option/argument declarations are treated as intentional immutable calls
 - removed unused imports surfaced by CI lint in audio recovery, timeline generation, and the image provider contract
+- subtitle cue generation now uses explicit `zip(..., strict=True)` semantics
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
