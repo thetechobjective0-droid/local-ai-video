@@ -1,0 +1,14 @@
+runtime:
+  profile: balanced
+  max_concurrent_media_jobs: 1
+  local_only: true
+
+llm:
+  provider: ollama
+  model: qwen2.5-coder:32b
+  temperature: 0.2
+  top_p: 0.9
+  top_k: 40
+
+storage:
+  root: ./data
