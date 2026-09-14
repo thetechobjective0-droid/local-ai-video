@@ -15,6 +15,7 @@ from app.storage.filesystem import FilesystemStore
 @dataclass(frozen=True)
 class VideoRecoveryResult:
     """Generated scene video plus recovery metadata."""
+
     scene: Scene
     attempts: int
     strategies: tuple[str, ...]
@@ -23,10 +24,16 @@ class VideoRecoveryResult:
 def _simplify_motion_prompt(prompt: str) -> str:
     """Apply a deterministic conservative simplification to a motion prompt."""
     text = " ".join(prompt.split())
-    return text[:600] if text else "Subtle cinematic camera motion with stable subjects and natural movement."
+    return (
+        text[:600]
+        if text
+        else "Subtle cinematic camera motion with stable subjects and natural movement."
+    )
 
 
-def generate_scene_video_with_recovery(provider: VideoProvider, store: FilesystemStore, project_id: UUID, scene: Scene, **kwargs: Any) -> VideoRecoveryResult:
+def generate_scene_video_with_recovery(
+    provider: VideoProvider, store: FilesystemStore, project_id: UUID, scene: Scene, **kwargs: Any
+) -> VideoRecoveryResult:
     """Generate a scene video with finite prompt refinement and no timing mutation."""
     original_prompt = scene.motion_prompt
     strategies: list[str] = []
@@ -36,10 +43,17 @@ def generate_scene_video_with_recovery(provider: VideoProvider, store: Filesyste
             current = scene
             strategies.append("original")
         elif attempt == 1:
-            current = scene.model_copy(update={"motion_prompt": _simplify_motion_prompt(original_prompt)})
+            current = scene.model_copy(
+                update={"motion_prompt": _simplify_motion_prompt(original_prompt)}
+            )
             strategies.append("simplified_motion_prompt")
         else:
-            current = scene.model_copy(update={"motion_prompt": "Subtle cinematic motion; preserve composition and subject identity.", "negative_prompt": ""})
+            current = scene.model_copy(
+                update={
+                    "motion_prompt": "Subtle cinematic motion; preserve composition and subject identity.",
+                    "negative_prompt": "",
+                }
+            )
             strategies.append("conservative_motion_prompt")
         _, updated = generate_scene_video(provider, store, project_id, current, **kwargs)
         return updated
@@ -47,5 +61,7 @@ def generate_scene_video_with_recovery(provider: VideoProvider, store: Filesyste
     try:
         result = run_bounded(operation, VIDEO_RETRY_POLICY)
     except Exception as exc:
-        raise VideoAgentError(f"scene video generation failed after bounded recovery: {exc}") from exc
+        raise VideoAgentError(
+            f"scene video generation failed after bounded recovery: {exc}"
+        ) from exc
     return VideoRecoveryResult(result.value, result.attempts, tuple(strategies))

@@ -15,6 +15,7 @@ from app.storage.filesystem import FilesystemStore
 @dataclass(frozen=True)
 class ImageRecoveryResult:
     """Generated scene image plus bounded recovery metadata."""
+
     scene: Scene
     attempts: int
     strategies: tuple[str, ...]
@@ -26,7 +27,9 @@ def _simplify_prompt(prompt: str) -> str:
     return text[:600] if text else "Create a clear cinematic image matching the scene description."
 
 
-def generate_scene_image_with_recovery(provider: ImageProvider, store: FilesystemStore, project_id: UUID, scene: Scene, **kwargs: Any) -> ImageRecoveryResult:
+def generate_scene_image_with_recovery(
+    provider: ImageProvider, store: FilesystemStore, project_id: UUID, scene: Scene, **kwargs: Any
+) -> ImageRecoveryResult:
     """Generate an image with a finite budget and deterministic refinement."""
     original_prompt = scene.image_prompt
     strategies: list[str] = []
@@ -36,10 +39,16 @@ def generate_scene_image_with_recovery(provider: ImageProvider, store: Filesyste
             current = scene
             strategies.append("original")
         elif attempt == 1:
-            current = scene.model_copy(update={"image_prompt": _simplify_prompt(original_prompt or scene.visual_description)})
+            current = scene.model_copy(
+                update={
+                    "image_prompt": _simplify_prompt(original_prompt or scene.visual_description)
+                }
+            )
             strategies.append("simplified_prompt")
         else:
-            current = scene.model_copy(update={"image_prompt": _simplify_prompt(scene.visual_description)})
+            current = scene.model_copy(
+                update={"image_prompt": _simplify_prompt(scene.visual_description)}
+            )
             strategies.append("visual_description_fallback")
         _, updated = generate_scene_image(provider, store, project_id, current, **kwargs)
         return updated
@@ -47,5 +56,7 @@ def generate_scene_image_with_recovery(provider: ImageProvider, store: Filesyste
     try:
         result = run_bounded(operation, IMAGE_RETRY_POLICY)
     except Exception as exc:
-        raise VideoAgentError(f"scene image generation failed after bounded recovery: {exc}") from exc
+        raise VideoAgentError(
+            f"scene image generation failed after bounded recovery: {exc}"
+        ) from exc
     return ImageRecoveryResult(result.value, result.attempts, tuple(strategies))

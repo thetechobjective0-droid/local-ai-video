@@ -14,7 +14,14 @@ from app.storage.filesystem import FilesystemStore
 AUDIO_DURATION_TOLERANCE_SECONDS = 0.25
 
 
-def correct_scene_audio_duration(store: FilesystemStore, project_id: UUID, scene: Scene, *, ffmpeg_command: str = "ffmpeg", tolerance_seconds: float = AUDIO_DURATION_TOLERANCE_SECONDS) -> tuple[Artifact, Scene]:
+def correct_scene_audio_duration(
+    store: FilesystemStore,
+    project_id: UUID,
+    scene: Scene,
+    *,
+    ffmpeg_command: str = "ffmpeg",
+    tolerance_seconds: float = AUDIO_DURATION_TOLERANCE_SECONDS,
+) -> tuple[Artifact, Scene]:
     """Pad or trim scene narration to the canonical scene duration when needed."""
     if scene.audio_asset is None:
         raise VideoAgentError("scene has no audio asset to correct")
@@ -43,9 +50,24 @@ def correct_scene_audio_duration(store: FilesystemStore, project_id: UUID, scene
         return artifact, scene
     output = source.with_name(f".{source.stem}.duration-corrected.wav")
     duration = f"{scene.duration_seconds:.6f}"
-    command = [ffmpeg_command, "-y", "-hide_banner", "-loglevel", "error", "-i", str(source), "-af", f"apad,atrim=duration={duration},asetpts=N/SR/TB", "-c:a", "pcm_s16le", str(output)]
+    command = [
+        ffmpeg_command,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(source),
+        "-af",
+        f"apad,atrim=duration={duration},asetpts=N/SR/TB",
+        "-c:a",
+        "pcm_s16le",
+        str(output),
+    ]
     try:
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=120)
+        completed = subprocess.run(
+            command, check=False, capture_output=True, text=True, timeout=120
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise VideoAgentError("FFmpeg narration duration correction is unavailable") from exc
     if completed.returncode != 0:
@@ -55,6 +77,20 @@ def correct_scene_audio_duration(store: FilesystemStore, project_id: UUID, scene
     corrected_sha = hashlib.sha256(output.read_bytes()).hexdigest()
     source.unlink(missing_ok=True)
     output.replace(source)
-    corrected = artifact.model_copy(update={"sha256": corrected_sha, "parameters": {**artifact.parameters, "duration_seconds": scene.duration_seconds, "duration_correction": {"applied": True, "original_duration_seconds": actual_duration, "target_duration_seconds": scene.duration_seconds, "method": "pad_or_trim"}}})
+    corrected = artifact.model_copy(
+        update={
+            "sha256": corrected_sha,
+            "parameters": {
+                **artifact.parameters,
+                "duration_seconds": scene.duration_seconds,
+                "duration_correction": {
+                    "applied": True,
+                    "original_duration_seconds": actual_duration,
+                    "target_duration_seconds": scene.duration_seconds,
+                    "method": "pad_or_trim",
+                },
+            },
+        }
+    )
     store.write_json(directory, manifest_path.name, corrected.model_dump(mode="json"))
     return corrected, scene
