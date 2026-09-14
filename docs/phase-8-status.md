@@ -4,7 +4,7 @@
 
 **IN PROGRESS**
 
-Phase 8 now has deterministic routing, centralized provider capabilities, project-level media orchestration, host resource snapshots, deterministic scene-video cache keys, and project asset lifecycle transitions.
+Phase 8 now has deterministic routing, centralized provider capabilities, project-level media orchestration, host resource snapshots, deterministic scene-video cache keys, project asset lifecycle transitions, and a deterministic scene-video QA gate.
 
 ## Implemented
 
@@ -21,6 +21,7 @@ Phase 8 now has deterministic routing, centralized provider capabilities, projec
 - Scene-video generation derives a stable cache key from the input image hash, provider/model, prompts, dimensions, duration, FPS, and seed.
 - Existing scene-video artifacts are reused only when the cache key and output SHA-256 both validate.
 - Project media generation persists `ASSETS_GENERATING` before work, `ASSETS_READY` after all scenes succeed, and `FAILED` when generation raises.
+- Generated scene videos are now accepted only after FFprobe metadata validation and a real FFmpeg decode pass.
 - CLI command: `video-agent generate-media <PROJECT_ID>`.
 - Unit coverage covers registry lookup and explicit motion capability routing.
 
@@ -32,11 +33,12 @@ Scene preference
       v
 Provider capability + duration + memory gate
       |
-      +--> IMAGE_TO_VIDEO --> provider succeeds --> use AI video
-      |                         |
+      +--> IMAGE_TO_VIDEO --> provider succeeds --> QA passes --> use AI video
+      |                         |                    |
+      |                         |                    +--> fails --> reject / fallback
       |                         +--> fails --> IMAGE_MOTION fallback
       |
-      +--> IMAGE_MOTION --> provider advertises motion --> deterministic motion
+      +--> IMAGE_MOTION --> provider advertises motion --> QA passes --> deterministic motion
       |                  |
       |                  +--> unsupported --> STATIC_IMAGE
       |
@@ -63,6 +65,20 @@ Scene-video caching is content-addressed by a deterministic generation key. The 
 
 This cache is intentionally conservative: it reuses the current scene-video artifact rather than introducing a global cross-project media store before cache eviction, statistics, and lifecycle rules are defined.
 
+## Video QA policy
+
+A newly generated scene video must pass all of the following before its artifact is persisted:
+
+- output exists and is non-empty
+- FFprobe succeeds and returns valid JSON
+- a video stream exists
+- duration is within the configured tolerance of the provider-reported duration
+- dimensions match the provider result
+- FPS matches the provider result
+- FFmpeg can decode the complete clip without an error
+
+QA is deterministic and does not use an LLM or visual-quality heuristic yet. Semantic/visual quality checks remain a later Phase 9 concern.
+
 ## Project lifecycle
 
 Media generation now records explicit project-level lifecycle states:
@@ -88,10 +104,10 @@ Hardware acceptance remains pending on the target M4 Mac. Resource snapshots use
 
 ## Next
 
-1. Add video QA before an AI clip is accepted as renderable.
-2. Preserve and validate the deterministic fallback path when AI video generation is unavailable or fails.
-3. Centralize provider construction so CLI wiring does not duplicate provider knowledge.
-4. Expand caching into explicit project cache statistics/cleanup after lifecycle rules are defined.
+1. Preserve and validate the deterministic fallback path when AI video generation is unavailable or fails.
+2. Centralize provider construction so CLI wiring does not duplicate provider knowledge.
+3. Expand caching into explicit project cache statistics/cleanup after lifecycle rules are defined.
+4. Begin Phase 9 semantic/visual QA after deterministic media integrity is stable.
 
 ## Acceptance
 
