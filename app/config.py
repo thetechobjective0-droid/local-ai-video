@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
 import yaml
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RuntimeConfig(BaseModel):
@@ -34,6 +34,14 @@ class ImageConfig(BaseModel):
     guidance_scale: float = Field(default=7.0, ge=0, le=30)
 
 
+class TTSConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = "macos_say"
+    voice: str | None = None
+    rate: int = Field(default=180, ge=1, le=600)
+    sample_rate: int = Field(default=22050, ge=8000, le=48000)
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     root: Path = Path("./data")
@@ -44,6 +52,7 @@ class AppConfig(BaseModel):
     runtime: RuntimeConfig = RuntimeConfig()
     llm: LLMConfig = LLMConfig()
     image: ImageConfig = ImageConfig()
+    tts: TTSConfig = TTSConfig()
     storage: StorageConfig = StorageConfig()
 
 
