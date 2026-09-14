@@ -207,7 +207,23 @@ def generate_media(project_id: str, config: Path | None = typer.Option(None, "--
     image_provider, _ = _image_provider_and_store(config)
     capability = get_provider_capabilities(app_config.video.provider).video
     project_uuid = UUID(project_id)
-    results = generate_project_media(store, project_uuid, _load_scenes(store, project_uuid), video_provider=video_provider, image_provider=image_provider, fallback_provider=build_video_fallback(app_config), video_capability=capability, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps)
+    results = generate_project_media(
+        store,
+        project_uuid,
+        _load_scenes(store, project_uuid),
+        video_provider=video_provider,
+        image_provider=image_provider,
+        image_model=app_config.image.model_path.name,
+        image_width=app_config.image.width,
+        image_height=app_config.image.height,
+        image_steps=app_config.image.steps,
+        image_guidance_scale=app_config.image.guidance_scale,
+        video_capability=capability,
+        fallback_provider=build_video_fallback(app_config),
+        width=app_config.video.width,
+        height=app_config.video.height,
+        fps=app_config.video.fps,
+    )
     for result in results:
         suffix = " (fallback)" if result.used_fallback else ""
         typer.echo(f"Scene {result.scene.index}: {result.selected_media_type.value}{suffix}")
