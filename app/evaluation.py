@@ -42,11 +42,7 @@ def evaluate_project(
     """Score textual semantic consistency without pretending to perform visual QA."""
     qa = validate_project(store, project_id)
     if not qa.passed:
-        return EvaluationReport(
-            passed=False,
-            scores=(),
-            hard_qa_passed=False,
-        )
+        return EvaluationReport(passed=False, scores=(), hard_qa_passed=False)
     project = store.load_project(project_id)
     scenes = _load_scenes(store, project_id)
     project_tokens = _tokens(project.source_prompt)
@@ -63,8 +59,7 @@ def evaluate_project(
             )
             if value
         )
-        score = _jaccard(project_tokens, _tokens(scene_text))
-        scene_scores.append(score)
+        scene_scores.append(_jaccard(project_tokens, _tokens(scene_text)))
     average = sum(scene_scores) / len(scene_scores) if scene_scores else 0.0
     scores.append(
         EvaluationScore(
@@ -75,7 +70,9 @@ def evaluate_project(
     )
 
     continuity_values: list[float] = []
-    for previous, current in zip(scenes, scenes[1:]):
+    for index in range(max(0, len(scenes) - 1)):
+        previous = scenes[index]
+        current = scenes[index + 1]
         previous_tokens = _tokens(previous.visual_description or previous.image_prompt)
         current_tokens = _tokens(current.visual_description or current.image_prompt)
         continuity_values.append(_jaccard(previous_tokens, current_tokens))
