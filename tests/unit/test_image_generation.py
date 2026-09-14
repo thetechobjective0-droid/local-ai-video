@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 from uuid import uuid4
 
@@ -10,7 +11,8 @@ from app.storage.filesystem import FilesystemStore
 class FakeImageProvider:
     def generate(self, request: ImageGenerationRequest) -> ImageResult:
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
-        request.output_path.write_bytes(b"valid-png-placeholder")
+        payload = b"valid-png-placeholder"
+        request.output_path.write_bytes(payload)
         return ImageResult(
             path=request.output_path,
             model="fake-model",
@@ -18,7 +20,7 @@ class FakeImageProvider:
             width=request.width,
             height=request.height,
             seed=request.seed,
-            sha256="placeholder",
+            sha256=hashlib.sha256(payload).hexdigest(),
             metadata={"steps": request.steps},
         )
 
@@ -43,7 +45,7 @@ def test_generate_scene_image_persists_artifact_and_scene(tmp_path: Path) -> Non
     assert artifact.project_id == project_id
     assert artifact.scene_id == scene.id
     assert artifact.type == "scene_image"
-    assert artifact.sha256 == "placeholder"
+    assert artifact.sha256 == hashlib.sha256(b"valid-png-placeholder").hexdigest()
     assert updated.image_asset == artifact.id
     assert updated.status.value == "ready"
     assert (project_dir / "images" / "scene-0001.png").exists()
