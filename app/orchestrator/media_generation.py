@@ -1,6 +1,7 @@
 """Project-level deterministic media generation orchestration."""
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from uuid import UUID
 
 from app.exceptions import VideoAgentError
@@ -39,11 +40,8 @@ def _resolve_resources(store: FilesystemStore, resource_snapshot: ResourceSnapsh
 def _set_project_status(store: FilesystemStore, project_id: UUID, status: ProjectStatus) -> None:
     """Persist a project lifecycle transition with a fresh update timestamp."""
     project = store.load_project(project_id)
-    store.write_json(
-        store.project_dir(project_id),
-        "project.json",
-        project.model_copy(update={"status": status, "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)}).model_dump(mode="json"),
-    )
+    updated = project.model_copy(update={"status": status, "updated_at": datetime.now(timezone.utc)})
+    store.write_json(store.project_dir(project_id), "project.json", updated.model_dump(mode="json"))
 
 
 def generate_project_media(
@@ -72,11 +70,7 @@ def generate_project_media(
     results: list[SceneMediaResult] = []
     try:
         for scene in sorted(scenes, key=lambda item: item.index):
-            selected = select_media_type(
-                scene,
-                video=capability,
-                available_memory_gb=effective_memory_gb,
-            )
+            selected = select_media_type(scene, video=capability, available_memory_gb=effective_memory_gb)
             current = scene
             used_fallback = False
 
@@ -118,8 +112,11 @@ def generate_project_media(
                     }
                 }
             )
-            directory = store.project_dir(project_id)
-            store.write_json(directory, f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
+            store.write_json(
+                store.project_dir(project_id),
+                f"scene-{current.index:04d}.json",
+                current.model_dump(mode="json"),
+            )
             results.append(SceneMediaResult(current, selected, used_fallback))
     except Exception:
         _set_project_status(store, project_id, ProjectStatus.FAILED)
