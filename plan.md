@@ -34,8 +34,8 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 14 | Semantic/visual evaluation | NEXT |
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
-| 17 | Security/locality hardening | IN PROGRESS; renderer/job path hardening started |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED |
+| 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart regression tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
 | 21 | M4 performance/resource optimization | PLANNED; depends on measurements |
@@ -79,15 +79,15 @@ Centralize provider/model profiles, compatibility checks, health/readiness contr
 
 ## Phase 17 — Security/locality hardening
 
-**In progress.** Renderer artifact resolution now rejects absolute/relative paths that resolve outside the project directory. Planning-job paths now have the same storage-root containment check, and stale `queued`/`running` planning jobs are persisted as `interrupted` after process restart.
+**In progress.** Renderer artifact resolution now rejects absolute/relative paths that resolve outside the project directory. Planning-job paths use storage-root containment and stale `queued`/`running` planning jobs are persisted as `interrupted` after restart.
 
-Remaining work includes the full filesystem/path/symlink audit, HTTP input-size limits, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
+Remaining work includes HTTP input-size limits, complete filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
 
 Security invariant: malformed input must never become arbitrary filesystem access, subprocess execution, remote upload, or uncontrolled resource consumption.
 
 ## Phase 18 — Testing and CI/CD
 
-Expand current unit/integration/API/job/end-to-end deterministic coverage to explicit provider contract tests, failure-injection tests, security regression tests, migration tests, and hardware acceptance tests intentionally excluded from standard model-free CI.
+Current tests cover deterministic application boundaries plus acceptance-readiness and planning restart recovery. Continue expanding provider contract tests, failure-injection tests, security regression tests, migration tests, and deterministic end-to-end coverage. Hardware acceptance remains intentionally outside standard model-free CI.
 
 Required regressions include retry exhaustion, malformed LLM output, stale artifacts/briefs, timeline errors, hash mismatch, unavailable providers, memory gates, cache boundaries, restart recovery, traversal attacks, invalid API transitions, and invalid final MP4s.
 
