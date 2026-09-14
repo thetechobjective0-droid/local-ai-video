@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-Phase 0–8 are substantially implemented. Phase 9 deterministic quality assurance is implemented, including project QA reporting, targeted scene regeneration, media integrity validation, timeline/subtitle validation, and final-video validation. The next implementation milestone is Phase 10 bounded agentic recovery and refinement. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
+Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. The next implementation milestone is **Phase 10 — Agentic Recovery and Refinement**. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -202,34 +202,23 @@ Remaining hardening: provider construction centralization, stronger fallback gua
 
 # 18. Phase 9 — Quality Assurance
 
-**Status: IMPLEMENTED — DETERMINISTIC QA COMPLETE**
+**Status: COMPLETE — DETERMINISTIC QA**
 
-Phase 9 provides deterministic QA across media, scenes, timelines, subtitles, and final video.
+Implemented deterministic QA across generated media and the complete project boundary.
 
-### Image QA
+### Media integrity
 
-- existence/non-empty validation
-- PNG signature/IHDR validation
-- positive dimensions
-- optional expected dimensions
-- SHA-256 measurement
+- image existence, PNG signature/IHDR, dimensions, and SHA-256
+- audio existence, FFprobe decode/stream validation, and duration tolerance
+- video existence, FFprobe metadata, stream validation, duration, resolution/FPS, and complete FFmpeg decode
 
-### Audio QA
+### Audio quality
 
-- existence/non-empty validation
-- bounded FFprobe invocation
-- valid JSON and audio stream validation
-- positive duration
-- expected-duration tolerance validation
-
-### Video QA
-
-- existence/non-empty validation
-- FFprobe metadata validation
-- video stream validation
-- duration validation
-- resolution/FPS validation
-- complete FFmpeg decode validation
+- FFmpeg `volumedetect` peak measurement
+- configurable clipping/headroom gate
+- FFmpeg `silencedetect` analysis
+- entirely-silent narration rejection
+- measured peak, duration, silence-event count, and silent-duration reporting
 
 ### Project QA
 
@@ -239,7 +228,8 @@ Phase 9 provides deterministic QA across media, scenes, timelines, subtitles, an
 - timeline project/duration/continuity validation
 - scene coverage validation
 - subtitle file validation
-- final-video validation when output exists
+- final MP4 validation
+- final audio quality validation
 
 ### Reporting and targeted regeneration
 
@@ -251,27 +241,19 @@ video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage video
 video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage all
 ```
 
-QA reports persist as `qa-report.json` with schema version, pass/fail state, exact failure scope, and actionable message. Targeted regeneration invalidates affected downstream media/cache state and re-runs QA.
+`qa-report.json` persists schema version, pass/fail state, exact failure scope, and actionable messages. Targeted regeneration invalidates affected downstream artifacts/cache state and reruns QA.
 
 ### Phase 9 acceptance
 
-Deterministic QA and targeted regeneration are implemented. CI validates deterministic behavior. Real model performance and visual-quality acceptance remain dependent on the target M4 environment.
+**Deterministic Phase 9 implementation is complete.** CI validates repository behavior. Target-M4 inference, memory pressure, generation latency, and subjective visual quality remain hardware/evaluation concerns and are not falsely marked as CI acceptance.
 
 ---
 
 # 19. Phase 10 — Agentic Recovery and Refinement
 
-Next major phase. Recovery remains bounded and deterministic around model calls.
+**Status: NEXT**
 
-Initial budgets:
-```text
-LLM structured-output repairs: 2
-image generation retries: 2
-video generation retries: 2
-render retries: 1
-```
-
-Recovery examples include bounded narration rewrite → TTS → QA, image retry/prompt simplification → deterministic fallback, and video resource reduction → fallback. No infinite loops or autonomous policy changes.
+Implement bounded recovery around deterministic QA and provider failures. Initial budgets: LLM structured-output repairs 2, image retries 2, video retries 2, render retries 1. Recovery may simplify prompts, adjust safe resource parameters, rewrite narration within policy, or select deterministic fallbacks. No infinite loops or autonomous policy changes.
 
 ---
 
