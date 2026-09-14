@@ -1,14 +1,15 @@
-"""Application configuration with local-only defaults."""
+"""Application configuration with safe local-only defaults."""
 
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
+import yaml
 
 
 class RuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    profile: str = "balanced"
+    profile: str = Field(default="balanced", pattern="^(fast|balanced|quality)$")
     max_concurrent_media_jobs: int = Field(default=1, ge=1)
     local_only: bool = True
 
@@ -37,6 +38,9 @@ class AppConfig(BaseModel):
     storage: StorageConfig = StorageConfig()
 
 
-def load_config() -> AppConfig:
-    """Return safe defaults for Phase 0; file-based loading is added next."""
-    return AppConfig()
+def load_config(path: Path | None = None) -> AppConfig:
+    """Load YAML configuration, falling back to safe defaults."""
+    if path is None:
+        return AppConfig()
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return AppConfig.model_validate(data)
