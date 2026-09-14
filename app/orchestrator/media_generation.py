@@ -7,6 +7,7 @@ from app.exceptions import VideoAgentError
 from app.generation.video import generate_scene_video
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
+from app.providers.capabilities import get_provider_capabilities
 from app.providers.video import VideoProvider
 from app.storage.filesystem import FilesystemStore
 
@@ -20,28 +21,37 @@ class SceneMediaResult:
     used_fallback: bool
 
 
+def _provider_capability(provider: VideoProvider) -> VideoCapability:
+    """Resolve registry capabilities from a concrete provider instance."""
+    provider_name = getattr(provider, "provider_name", None)
+    if not isinstance(provider_name, str):
+        raise VideoAgentError("video provider does not expose a registered provider_name")
+    return get_provider_capabilities(provider_name).video
+
+
 def generate_project_media(
     store: FilesystemStore,
     project_id: UUID,
     scenes: list[Scene],
     *,
     video_provider: VideoProvider,
-    video_capability: VideoCapability,
+    video_capability: VideoCapability | None = None,
     fallback_provider: VideoProvider | None = None,
     available_memory_gb: float | None = None,
     width: int = 704,
     height: int = 384,
     fps: int = 16,
 ) -> list[SceneMediaResult]:
-    """Resolve and generate media for every scene using bounded fallback logic."""
+    """Resolve and generate project media using registered provider capabilities."""
     if not scenes:
         raise VideoAgentError("cannot generate project media without scenes")
 
+    capability = video_capability or _provider_capability(video_provider)
     results: list[SceneMediaResult] = []
     for scene in sorted(scenes, key=lambda item: item.index):
         selected = select_media_type(
             scene,
-            video=video_capability,
+            video=capability,
             available_memory_gb=available_memory_gb,
         )
         current = scene
