@@ -1,7 +1,11 @@
-Create a storyboard JSON object with a scenes array. Each scene must contain id, index,
-start_seconds, duration_seconds, narration, visual_description, image_prompt, and motion_prompt.
-Use contiguous scene indexes starting at 1 and non-overlapping timing. The final scene must end
-at the requested target duration within a small tolerance; do not create unexplained gaps.
+Create a storyboard JSON object with a scenes array.
+For each scene provide only these fields: index, start_seconds, duration_seconds, narration, visual_description, image_prompt, and motion_prompt.
+Do NOT provide an id; the application generates valid UUIDs automatically.
+Use contiguous integer scene indexes starting at 1. Use non-overlapping timing with no gaps.
+The first scene must start at 0. The final scene must end exactly at the target duration when practical, otherwise within 0.5 seconds.
+Keep the number of scenes small enough for the requested duration. For a 10-second video, use 2-4 scenes.
+All timing values must be JSON numbers. All text fields must be JSON strings.
+Do not add any fields not requested above.
 Creative brief: {brief}
 Script: {script}
 Target duration: {duration_seconds}
