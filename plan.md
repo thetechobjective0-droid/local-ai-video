@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. Media submission is explicitly gated on planning completion so the dashboard cannot race the storyboard worker. Planning jobs also perform one bounded retry from persisted artifacts when the first model attempt fails.
+**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. Media submission is explicitly gated on planning completion so the dashboard cannot race the storyboard worker. Planning jobs also perform one bounded retry from persisted artifacts when the first model attempt fails. The dashboard now distinguishes planning state from media-job state and only presents the final video player when a final MP4 actually exists.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -37,6 +37,8 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - launcher displays the actual loopback port used by Uvicorn (`8765`)
 - media generation control remains disabled until the project reaches `storyboard_ready`
 - media submission returns HTTP 409 with a structured `planning_not_ready` error when called before scenes exist
+- dashboard labels clearly distinguish planning jobs from media-generation jobs
+- final video UI only becomes visible after the final MP4 endpoint confirms the file exists
 
 ### Deferred by design
 
