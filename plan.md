@@ -131,8 +131,9 @@ This repository must be developed using the rules in:
 - `.agents/skills/` — focused reusable skills.
 - `CONTRIBUTING.md` — development workflow and coding standards.
 - `TESTING.md` — complete test strategy.
+- `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done.
 
-Agents must load the smallest applicable set of skills for each task. Core implementation changes normally require coding + testing. Provider changes also require provider-integration + performance. File/process changes require security. Major architecture changes require architecture/review.
+Agents must load the smallest applicable set of skills for each task. Core implementation changes normally require coding + testing. Provider changes also require provider-integration + performance. File/process changes require security. Major architecture changes require architecture/review. Every meaningful change must update the relevant documentation.
 
 ---
 
@@ -165,6 +166,10 @@ Measures speed/memory/disk/concurrency on the target M4 and protects safe defaul
 ### Security Agent
 
 Reviews filesystem, subprocess, model-output, configuration, and dependency risks.
+
+### Documentation Agent
+
+Maintains architecture docs, setup/configuration docs, CLI/API docs, troubleshooting, examples, ADRs, migration notes, and phase status. Documentation is part of Definition of Done.
 
 ### Reviewer Agent
 
@@ -368,7 +373,8 @@ local-ai-video/
 │       ├── security/SKILL.md
 │       ├── performance/SKILL.md
 │       ├── debugging/SKILL.md
-│       └── review/SKILL.md
+│       ├── review/SKILL.md
+│       └── documentation/SKILL.md
 │
 ├── app/
 │   ├── __init__.py
@@ -377,6 +383,7 @@ local-ai-video/
 │   ├── logging.py
 │   ├── exceptions.py
 │   ├── health.py
+│   ├── preflight.py
 │   ├── models/
 │   ├── director/
 │   ├── orchestrator/
@@ -407,32 +414,43 @@ Generated media/model weights/cache must remain excluded from Git.
 
 Create a clean control plane for the local pipeline.
 
-## Tasks
+## Completed implementation
 
 - Python package foundation.
-- `uv` environment/dependency management.
-- Ruff.
-- Pytest.
-- Type checking where useful.
-- Pydantic.
-- Typer.
-- Structured logging.
-- Configuration loader.
-- Filesystem project store.
-- Health/doctor checks.
+- `uv` dependency configuration.
+- Ruff, Pytest, and mypy configuration.
+- Pydantic configuration models.
+- Typer CLI.
+- Structured correlation logging.
+- YAML configuration example/loading.
+- Domain-specific exceptions.
+- Filesystem project store with path containment checks.
+- Disk-capacity preflight.
+- Memory and disk resource snapshot.
 - Apple Silicon detection.
-- Ollama detection.
+- Python runtime detection.
 - FFmpeg detection.
-- Disk/memory preflight checks.
-- Ignore rules for generated data.
+- Ollama local health/model detection.
+- `video-agent health`.
+- `video-agent doctor`.
+- Unit tests for configuration, health, Ollama adapter, and filesystem behavior.
+- Git ignore rules for generated media/model/cache artifacts.
+- Makefile quality commands.
+- GitHub Actions quality gates for formatting, lint, type checking, and tests.
+- Documentation standard and agent documentation requirements.
 
-## Acceptance criteria
+## Phase 0 acceptance
+
+Local validation command:
 
 ```bash
-video-agent doctor
+make check
+make doctor
 ```
 
-reports OS/architecture/Python/memory/Ollama/models/FFmpeg/storage health.
+The repository-side foundation is complete. Final hardware acceptance must be executed on the user's M4 Mac because GitHub CI cannot validate the actual local Ollama/FFmpeg installation and Apple Silicon resource behavior.
+
+**Status: CODE COMPLETE — LOCAL M4 ACCEPTANCE PENDING**
 
 ---
 
@@ -979,6 +997,7 @@ Adds:
 16. Use typed/domain-specific errors.
 17. Fail clearly rather than silently falling back.
 18. Prefer one complete vertical slice over many incomplete abstractions.
+19. Documentation updates are part of the same change as the feature they describe.
 
 ---
 
@@ -1056,23 +1075,29 @@ Only after this works reliably should advanced image/video generation be introdu
 
 # 36. First Coding Session Checklist
 
-Implement only:
+Implemented during Phase 0:
 
-- [ ] `pyproject.toml`
-- [ ] package structure
-- [ ] config loader
-- [ ] logging
-- [ ] `video-agent health`
-- [ ] `video-agent doctor`
-- [ ] Pydantic project/scene/artifact models
-- [ ] filesystem store
-- [ ] Ollama health check
-- [ ] FFmpeg health check
-- [ ] one Ollama generation call
-- [ ] one validated JSON project
-- [ ] unit tests for the above
+- [x] `pyproject.toml`
+- [x] package structure
+- [x] config loader
+- [x] logging
+- [x] `video-agent health`
+- [x] `video-agent doctor`
+- [x] initial Pydantic project model
+- [x] filesystem store
+- [x] Ollama health check
+- [x] FFmpeg health check
+- [x] memory/disk preflight
+- [x] unit tests
+- [x] CI quality gates
+- [x] documentation standard
 
-The first goal is a reliable **local control plane**, not a sophisticated video model.
+Deferred to Phase 1:
+
+- [ ] one real Ollama inference generation
+- [ ] validated Director JSON output
+
+These are intentionally Phase 1 because they constitute the first actual Director vertical slice rather than environment/control-plane validation.
 
 ---
 
@@ -1096,3 +1121,25 @@ Do not initially build:
 Success means a user can remain on the M4 Mac, enter a natural-language video request, and receive a reproducible MP4 without manually assembling scripts, images, audio, subtitles, and editing steps.
 
 An engineer must be able to inspect every intermediate artifact, replace one provider/model, rerun a single scene, resume an interrupted project, and reproduce a final render from a saved manifest.
+
+---
+
+# 39. Implementation Log
+
+The plan is updated as implementation progresses. Each meaningful implementation commit must update this section and the relevant phase status.
+
+### Phase 0 implementation log
+
+- Added Python project/dependency/tooling foundation.
+- Added local-only configuration and YAML example.
+- Added structured logging and domain exceptions.
+- Added filesystem project storage and disk preflight.
+- Added memory/disk resource snapshot.
+- Added Ollama local health/model detection.
+- Added health/doctor CLI checks.
+- Added tests and GitHub Actions quality gates.
+- Added documentation Definition of Done and strengthened AI-agent operating rules.
+
+**Current status:** Phase 0 code complete; final acceptance requires running the documented commands on the target M4 Mac.
+
+**Next:** Phase 1 — Local LLM Director.
