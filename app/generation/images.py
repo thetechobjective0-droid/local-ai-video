@@ -1,8 +1,9 @@
 """Generate and persist one image artifact for an individual scene."""
 
-from pathlib import Path
+import hashlib
 from uuid import UUID
 
+from app.exceptions import VideoAgentError
 from app.models.artifact import Artifact
 from app.models.scene import Scene
 from app.providers.image import ImageGenerationRequest, ImageProvider
@@ -44,6 +45,11 @@ def generate_scene_image(
             metadata={"scene_id": str(scene.id), "scene_index": scene.index},
         )
     )
+    if not result.path.is_file() or result.path.stat().st_size == 0:
+        raise VideoAgentError("image provider returned no usable image file")
+    actual_sha256 = hashlib.sha256(result.path.read_bytes()).hexdigest()
+    if actual_sha256 != result.sha256:
+        raise VideoAgentError("image provider returned an invalid output hash")
 
     artifact = Artifact(
         project_id=project_id,
@@ -53,7 +59,7 @@ def generate_scene_image(
         mime="image/png",
         provider=result.provider,
         model=result.model,
-        sha256=result.sha256,
+        sha256=actual_sha256,
         parameters={
             "width": result.width,
             "height": result.height,
