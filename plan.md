@@ -40,6 +40,10 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - dashboard labels clearly distinguish planning jobs from media-generation jobs
 - final video UI only becomes visible after the final MP4 endpoint confirms the file exists
 - final video endpoint supports lightweight `HEAD` existence checks used by the dashboard without streaming the MP4
+- application logging is explicitly initialized at web startup and from the launcher entry point so pipeline logs are visible under Uvicorn
+- web request handlers log lifecycle events for project loading, resume, timeline, QA, artifacts and regeneration
+- missing local image providers are returned as structured HTTP 503 errors instead of unhandled ASGI 500 tracebacks
+- subtitle endpoints support `HEAD` checks used by the dashboard
 
 ### Deferred by design
 
