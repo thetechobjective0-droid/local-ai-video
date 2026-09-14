@@ -31,6 +31,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - asynchronous project creation: filesystem metadata is returned immediately while Ollama planning runs in a local background worker
 - validated asynchronous project creation request schema with forbidden unknown fields
 - planning job status endpoint
+- dashboard planning status and 2-second polling, with automatic project refresh after planning completes or fails
 - QA endpoint serializes the dataclass report correctly for FastAPI JSON responses
 - API/UI launch and operational documentation
 - launcher displays the actual loopback port used by Uvicorn (`8765`)
