@@ -70,6 +70,8 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - strict mypy configuration keeps heavy optional ML packages out of the CI environment while preserving type checking of application boundaries
 - corrected Python health-check field typing for strict mypy
 - typed the optional LTX video provider
+- corrected optional FFmpeg audio-asset lookup typing without changing render behavior
+- corrected asynchronous web timeline JSON validation and separated image/video recovery result types
 - Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
