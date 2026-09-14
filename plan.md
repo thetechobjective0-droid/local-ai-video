@@ -60,6 +60,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - stale queued/running jobs are marked `interrupted` on process restart
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
+- `run.sh` main-branch launcher that updates `main`, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
 
 ### Design constraints
 
