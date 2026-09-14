@@ -1,5 +1,11 @@
 # Local AI Video Generator — Detailed Engineering Plan
 
+## Current implementation checkpoint
+
+Phase 0 is code-complete pending validation on the target M4 Mac. Phase 1 now includes the local Ollama Director, validated brief/script/storyboard generation, bounded structured-output repair, versioned prompts, persisted project state, atomic JSON artifacts, and expanded boundary tests.
+
+The detailed architecture and phased plan below remains the source of truth. The immediate next milestone is **real M4 acceptance of the Phase 1 Director pipeline**, followed by the first local image-provider vertical slice.
+
 ## 1. Vision
 
 Build a local-first AI video production system for Apple Silicon that accepts a natural-language idea and turns it into a finished video through a reproducible, inspectable pipeline.
@@ -460,28 +466,39 @@ The repository-side foundation is complete. Final hardware acceptance must be ex
 
 Use the local LLM as the creative director while keeping all model output strictly validated.
 
-## Implemented so far
+## Implemented
 
 - Local `LLMProvider` protocol.
 - Typed `LLMRequest` and `LLMResponse` structures.
 - Ollama `/api/chat` generation adapter.
-- Localhost-only enforcement in the Ollama adapter.
+- Robust loopback-only endpoint validation with exact hostname allowlist.
+- Configured Ollama base URL, model, temperature, top-p and top-k propagation.
 - Structured response metadata capture.
 - Validated `CreativeBrief` Pydantic schema.
+- Versioned Director prompt files.
 - Director system prompt with local-only and non-executable-output constraints.
-- Director brief generation and JSON validation.
-- Unit tests for valid and invalid Director output.
+- Director brief generation and JSON/Pydantic validation.
+- Bounded structured-output repair/retry with explicit retry budget.
+- `Script` generation and validation.
+- `Storyboard` generation and validation.
+- Scene timing/non-overlap validation.
+- Storyboard target-duration validation with tolerance.
+- Persist-first `VideoProject` creation.
+- Project status transitions through `BRIEF_READY`, `SCRIPT_READY`, and `STORYBOARD_READY`.
+- Atomic JSON persistence for project artifacts.
+- Safe artifact filename validation.
+- CLI wiring to configured local Ollama settings.
+- Unit and integration-style tests for retry exhaustion, path safety, storyboard timing, project failure persistence, and Ollama request boundaries.
 
 ## Remaining
 
 - real M4 Ollama inference acceptance
-- JSON repair/retry policy
-- full `VideoProject` creation from the brief
-- script generation
-- storyboard generation
-- prompt versioning files
+- resume command that discovers the first incomplete Director stage
+- persisted generation-run metadata for each LLM stage
+- richer canonical Scene schema from the full Phase 2 model
+- script duration/narration compatibility validation
 
-**Status: IN PROGRESS**
+**Status: IN PROGRESS — CODED, TESTS ADDED, LOCAL M4 ACCEPTANCE PENDING**
 
 ---
 
@@ -513,6 +530,8 @@ Each scene must contain:
 - scene total approximately equals project duration
 - narration compatible with scene duration
 - required prompts present
+
+Phase 1 has implemented the initial Script and Storyboard schemas and timing validation. The richer Phase 2 scene model remains to be completed.
 
 ---
 
@@ -740,6 +759,8 @@ On restart:
 4. Mark missing/corrupt outputs incomplete.
 5. Resume from first incomplete stage.
 
+Phase 1 now persists stage status, but full automatic resume discovery remains pending.
+
 ---
 
 # 23. Phase 13 — Caching
@@ -864,7 +885,7 @@ and executed on the actual Apple Silicon environment.
 - subprocess timeout
 - resume behavior
 
-See `TESTING.md` for complete cases.
+Current Phase 1 tests cover retry limits, storyboard duration/timing, project failure persistence, filesystem filename safety, and Ollama request validation. The remaining hardware and end-to-end suites stay pending.
 
 ---
 
@@ -1097,15 +1118,21 @@ Phase 1 progress:
 
 - [x] LLM provider contract
 - [x] Ollama chat generation adapter
-- [x] localhost-only provider enforcement
+- [x] robust localhost-only provider enforcement
+- [x] configured Ollama model/runtime settings
 - [x] CreativeBrief schema
 - [x] Director brief generation
-- [x] Director structured-output tests
-- [ ] JSON repair/retry
+- [x] bounded JSON repair/retry
+- [x] script generation
+- [x] storyboard generation
+- [x] storyboard timing/duration validation
+- [x] persisted project state transitions
+- [x] atomic JSON artifact persistence
+- [x] versioned Director prompts
+- [x] boundary and failure-path tests
 - [ ] real M4 inference acceptance
-- [ ] full project creation
-- [ ] script generation
-- [ ] storyboard generation
+- [ ] automatic resume discovery
+- [ ] generation-run metadata
 
 ---
 
@@ -1154,15 +1181,19 @@ The plan is updated as implementation progresses. Each meaningful implementation
 
 - Added typed local LLM provider contract.
 - Implemented Ollama `/api/chat` generation.
-- Enforced localhost-only Ollama endpoints.
-- Added validated CreativeBrief schema.
-- Added Director brief generation with JSON/Pydantic validation.
-- Added Director tests for valid and malformed model output.
+- Enforced exact loopback endpoint validation and rejected credentials/non-loopback hosts.
+- Wired configured Ollama base URL/model/sampling parameters into the Director CLI pipeline.
+- Added validated CreativeBrief schema and versioned Director prompt files.
+- Added bounded JSON repair/retry with explicit retry limits.
+- Added Script and Storyboard generation with timing and target-duration validation.
+- Changed project planning to persist the project before expensive Director stages and record stage status after each successful artifact.
+- Added atomic JSON artifact writes and simple-filename path safety.
+- Added tests for retry exhaustion, storyboard timing, project failure persistence, filesystem safety, and Ollama request/response boundaries.
 
-**Status:** IN PROGRESS — real M4 inference and remaining Director pipeline stages pending.
+**Status:** CODE COMPLETE FOR CURRENT DIRECTOR SLICE — LOCAL M4 ACCEPTANCE PENDING.
 
 ### Latest implementation synchronization
 
-This plan update records the Phase 1 implementation currently present in the repository. Future meaningful implementation commits must keep this log and the relevant checklist synchronized.
+The latest implementation commit is `07d088d00bb875d7846dc30af0ea7fce32e38800` (`test: harden Phase 1 Director boundaries`). It adds the Phase 1 failure-path and provider-boundary tests and removes an unnecessary test fixture construction.
 
-**Next:** complete Phase 1 structured-output repair, project creation, script, and storyboard pipeline.
+**Next:** run the documented quality checks on the M4 Mac, perform one real Ollama Director generation using an installed local model, then implement automatic resume discovery and generation-run metadata before starting the local image provider.
