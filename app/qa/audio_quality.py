@@ -1,6 +1,5 @@
 """Deterministic audio quality checks using local FFmpeg filters."""
 
-import json
 import subprocess
 from pathlib import Path
 
@@ -20,7 +19,6 @@ def validate_audio_quality(
         raise VideoAgentError(f"audio artifact is missing or empty: {path}")
     if max_silence_seconds <= 0:
         raise ValueError("max_silence_seconds must be positive")
-
     command = [
         ffmpeg_command,
         "-v", "info",
@@ -36,21 +34,18 @@ def validate_audio_quality(
     diagnostics = f"{completed.stdout}\n{completed.stderr}"
     if completed.returncode != 0:
         raise VideoAgentError("audio quality analysis failed")
-
     peak_db = _parse_peak(diagnostics)
     silence_events = _parse_silence_events(diagnostics)
     if peak_db is None:
         raise VideoAgentError("audio quality analysis did not report a peak level")
     if peak_db > max_peak_db:
         raise VideoAgentError(f"audio peak {peak_db:.2f} dB exceeds limit {max_peak_db:.2f} dB")
-
     duration = _parse_duration(diagnostics)
     if duration <= 0:
         raise VideoAgentError("audio quality analysis reported non-positive duration")
     silent_duration = sum(end - start for start, end in silence_events if end >= start)
     if silent_duration >= duration:
         raise VideoAgentError("audio artifact is entirely silent")
-
     return {
         "peak_db": peak_db,
         "duration_seconds": duration,
