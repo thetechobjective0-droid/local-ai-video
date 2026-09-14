@@ -2,7 +2,6 @@
 
 import hashlib
 import subprocess
-from pathlib import Path
 from uuid import UUID
 
 from app.exceptions import VideoAgentError
