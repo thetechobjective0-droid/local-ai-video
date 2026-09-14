@@ -74,7 +74,9 @@ def generate_scene_image(
         f"scene-{scene.index:04d}-image.json",
         artifact.model_dump(mode="json"),
     )
-    updated_scene = scene.model_copy(update={"image_asset": artifact.id, "status": SceneStatus.READY})
+    updated_scene = scene.model_copy(
+        update={"image_asset": artifact.id, "status": SceneStatus.READY}
+    )
     store.write_json(
         directory,
         f"scene-{scene.index:04d}.json",
