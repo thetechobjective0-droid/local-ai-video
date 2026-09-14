@@ -7,6 +7,7 @@ from app.exceptions import VideoAgentError
 from app.generation.video import generate_scene_video
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
+from app.preflight import ResourceSnapshot, memory_gib, snapshot
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.video import VideoProvider
 from app.storage.filesystem import FilesystemStore
@@ -29,6 +30,11 @@ def _provider_capability(provider: VideoProvider) -> VideoCapability:
     return get_provider_capabilities(provider_name).video
 
 
+def _resolve_resources(store: FilesystemStore, resource_snapshot: ResourceSnapshot | None) -> ResourceSnapshot:
+    """Use an explicit resource snapshot or capture one immediately before generation."""
+    return resource_snapshot if resource_snapshot is not None else snapshot(store.root)
+
+
 def generate_project_media(
     store: FilesystemStore,
     project_id: UUID,
@@ -38,21 +44,25 @@ def generate_project_media(
     video_capability: VideoCapability | None = None,
     fallback_provider: VideoProvider | None = None,
     available_memory_gb: float | None = None,
+    resource_snapshot: ResourceSnapshot | None = None,
     width: int = 704,
     height: int = 384,
     fps: int = 16,
 ) -> list[SceneMediaResult]:
-    """Resolve and generate project media using registered provider capabilities."""
+    """Resolve and generate project media using registered capabilities and resources."""
     if not scenes:
         raise VideoAgentError("cannot generate project media without scenes")
 
+    resources = _resolve_resources(store, resource_snapshot)
+    measured_memory_gb = memory_gib(resources.available_memory_bytes)
+    effective_memory_gb = measured_memory_gb if available_memory_gb is None else available_memory_gb
     capability = video_capability or _provider_capability(video_provider)
     results: list[SceneMediaResult] = []
     for scene in sorted(scenes, key=lambda item: item.index):
         selected = select_media_type(
             scene,
             video=capability,
-            available_memory_gb=available_memory_gb,
+            available_memory_gb=effective_memory_gb,
         )
         current = scene
         used_fallback = False
@@ -104,6 +114,12 @@ def generate_project_media(
                     **current.metadata,
                     "selected_media_type": selected.value,
                     "media_fallback_used": used_fallback,
+                    "resource_snapshot": {
+                        "total_memory_bytes": resources.total_memory_bytes,
+                        "available_memory_bytes": resources.available_memory_bytes,
+                        "free_disk_bytes": resources.free_disk_bytes,
+                    },
+                    "routing_memory_gib": effective_memory_gb,
                 }
             }
         )
