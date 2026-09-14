@@ -73,6 +73,12 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - typed the optional LTX video provider
 - corrected optional FFmpeg audio-asset lookup typing without changing render behavior
 - corrected asynchronous web timeline JSON validation and separated image/video recovery result types
+- structured-output repair now preserves the underlying JSON/schema failure cause after bounded retries
+- script duration validation uses the model's explicit duration estimate as the Director contract
+- generated scene status persistence uses the canonical `SceneStatus` enum
+- CI installs FFmpeg/FFprobe so deterministic media QA tests run on GitHub-hosted Linux runners
+- media orchestration tests create the required project manifest before lifecycle transitions
+- subtitle tests explicitly cover deterministic max-character wrapping
 - Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
