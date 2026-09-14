@@ -1,9 +1,4 @@
-"""Minimal browser UI served by the local API."""
-
-from fastapi.responses import HTMLResponse
-
-from app.web import app
-
+"""Browser UI markup for the local API."""
 
 HTML = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -22,8 +17,3 @@ async function openProject(id){try{const d=await api('/api/projects/'+id);docume
 async function regen(pid,sid){try{await api(`/api/projects/${pid}/scenes/${sid}/regenerate-video`,{method:'POST'});await openProject(pid)}catch(e){alert(e.message)}}
 loadProjects();
 </script></main></body></html>"""
-
-
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return HTML
