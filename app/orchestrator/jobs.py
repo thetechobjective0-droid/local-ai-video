@@ -45,6 +45,7 @@ class MediaJobManager:
         self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="video-agent-job")
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
+        self._recover_stale_jobs()
 
     def _path(self, job_id: UUID) -> Path:
         jobs_dir = self.store.root / "jobs"
@@ -62,6 +63,17 @@ class MediaJobManager:
             temp_path = Path(temp.name)
         temp_path.replace(path)
         return job
+
+    def _recover_stale_jobs(self) -> None:
+        """A new process cannot own old worker threads, so mark running jobs interrupted."""
+        jobs_dir = self.store.root / "jobs"
+        for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
+            try:
+                job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if job.state in {"queued", "running"}:
+                self._save(job.model_copy(update={"state": "interrupted", "updated_at": datetime.now(timezone.utc), "error": "worker process restarted"}))
 
     def get(self, job_id: UUID) -> MediaJob:
         path = self._path(job_id)
