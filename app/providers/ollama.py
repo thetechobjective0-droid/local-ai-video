@@ -12,9 +12,11 @@ from app.providers.base import LLMRequest, LLMResponse
 class OllamaProvider:
     """Call only an Ollama server bound to an approved local hostname."""
 
+    ALLOWED_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
+
     def __init__(self, base_url: str = "http://127.0.0.1:11434") -> None:
         parsed = urlparse(base_url)
-        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+        if parsed.scheme != "http" or parsed.hostname not in self.ALLOWED_HOSTS:
             raise ValueError("Ollama provider must use an HTTP localhost endpoint")
         if parsed.username or parsed.password:
             raise ValueError("Ollama endpoint must not contain credentials")
@@ -37,6 +39,36 @@ class OllamaProvider:
         ok, detail = self.health()
         if not ok:
             raise ProviderUnavailableError(f"Ollama unavailable: {detail}")
+
+    def models(self, timeout_seconds: float = 5.0) -> list[str]:
+        """Return model names advertised by the local Ollama service."""
+        request = Request(f"{self.base_url}/api/tags", method="GET")
+        try:
+            with urlopen(request, timeout=timeout_seconds) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except (OSError, URLError, TimeoutError) as exc:
+            raise ProviderUnavailableError(f"Ollama model listing failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise VideoAgentError("Ollama returned invalid model-list JSON") from exc
+
+        raw_models = payload.get("models", [])
+        if not isinstance(raw_models, list):
+            raise VideoAgentError("Ollama model list had an invalid shape")
+        names: list[str] = []
+        for entry in raw_models:
+            if isinstance(entry, dict) and isinstance(entry.get("name"), str):
+                names.append(entry["name"])
+        return names
+
+    def require_model(self, model: str) -> None:
+        """Fail before generation when the configured model is not installed locally."""
+        if not model.strip():
+            raise ValueError("Ollama model name must not be empty")
+        installed = self.models()
+        if model not in installed:
+            raise ProviderUnavailableError(
+                f"Ollama model '{model}' is not installed locally; installed models: {', '.join(installed) or 'none'}"
+            )
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate text through Ollama's local chat endpoint."""
