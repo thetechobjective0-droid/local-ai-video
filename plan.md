@@ -39,6 +39,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - media submission returns HTTP 409 with a structured `planning_not_ready` error when called before scenes exist
 - dashboard labels clearly distinguish planning jobs from media-generation jobs
 - final video UI only becomes visible after the final MP4 endpoint confirms the file exists
+- final video endpoint supports lightweight `HEAD` existence checks used by the dashboard without streaming the MP4
 
 ### Deferred by design
 
