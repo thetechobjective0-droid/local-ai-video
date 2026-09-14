@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from app.models.artifact import Artifact
 from app.models.timeline import Timeline, TimelineScene
-from app.render.ffmpeg import FFmpegRenderer
+from app.render.ffmpeg import FFmpegRenderer, _load_artifacts
 from app.storage.filesystem import FilesystemStore
 
 
@@ -22,16 +22,8 @@ def test_renderer_builds_local_ffmpeg_command(tmp_path: Path) -> None:
     audio.write_bytes(b"wav")
     image_id = uuid4()
     audio_id = uuid4()
-    store.write_json(
-        directory,
-        "image-artifact.json",
-        Artifact(project_id=project_id, id=image_id, type="scene_image", path=image, mime="image/png").model_dump(mode="json"),
-    )
-    store.write_json(
-        directory,
-        "audio-artifact.json",
-        Artifact(project_id=project_id, id=audio_id, type="scene_audio", path=audio, mime="audio/wav").model_dump(mode="json"),
-    )
+    store.write_json(directory, "image-artifact.json", Artifact(project_id=project_id, id=image_id, type="scene_image", path=image, mime="image/png").model_dump(mode="json"))
+    store.write_json(directory, "audio-artifact.json", Artifact(project_id=project_id, id=audio_id, type="scene_audio", path=audio, mime="audio/wav").model_dump(mode="json"))
     timeline = Timeline(
         project_id=project_id,
         duration_seconds=2,
@@ -40,8 +32,9 @@ def test_renderer_builds_local_ffmpeg_command(tmp_path: Path) -> None:
         scenes=[TimelineScene(scene_id=uuid4(), index=1, start_seconds=0, duration_seconds=2, image_asset=image_id, audio_asset=audio_id)],
     )
 
-    renderer = FFmpegRenderer()
-    command, filter_complex = renderer._build_command(directory, timeline, renderer._load_artifacts(directory) if hasattr(renderer, "_load_artifacts") else {}, directory / "final.mp4")
+    command, filter_complex = FFmpegRenderer()._build_command(
+        directory, timeline, _load_artifacts(directory), directory / "final.mp4"
+    )
 
     assert command[0] == "ffmpeg"
     assert "-filter_complex" in command
