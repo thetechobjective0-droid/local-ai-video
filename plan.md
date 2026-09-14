@@ -87,7 +87,9 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - media orchestration tests create the required project manifest before lifecycle transitions
 - subtitle tests explicitly cover deterministic max-character wrapping
 - Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
-- planning worker retries one failed Director run using persisted valid artifacts before marking the project failed
+- planning worker retries one failed Director run using persisted artifacts before marking the project failed
+- structured-output validation failures now preserve Pydantic field-level diagnostics for repair prompts and persisted job errors
+- storyboard prompts minimize the LLM contract to required fields and let the application generate UUIDs
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
