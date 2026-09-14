@@ -9,9 +9,13 @@ from pydantic import BaseModel, Field
 
 from app.config import load_config
 from app.director.project import create_plan, resume_plan
+from app.generation.audio import generate_scene_audio
+from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.scene import Scene
 from app.providers.factory import build_video_provider
+from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.qa.project import validate_project
 from app.qa.report import write_qa_report
@@ -29,8 +33,20 @@ class CreateProjectRequest(BaseModel):
     aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
 
 
+class RegenerateRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    stage: str = Field(default="video", pattern="^(image|audio|video)$")
+
+
 def _store() -> FilesystemStore:
     return FilesystemStore(load_config(None).storage.root)
+
+
+def _local_config():
+    config = load_config(None)
+    if not config.runtime.local_only:
+        raise HTTPException(status_code=503, detail="local_only must remain enabled")
+    return config
 
 
 def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
@@ -46,16 +62,12 @@ def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
     raise HTTPException(status_code=404, detail="scene not found")
 
 
-def _local_config():
-    config = load_config(None)
-    if not config.runtime.local_only:
-        raise HTTPException(status_code=503, detail="local_only must remain enabled")
-    return config
+def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
+    store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
 
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    """Serve the local dashboard."""
     return HTML
 
 
@@ -90,11 +102,9 @@ def create_project(request: CreateProjectRequest) -> dict[str, object]:
     provider.require_health()
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
-    directory = create_plan(
-        provider, store, request.prompt, request.duration, request.style, request.aspect_ratio,
-        model=config.llm.model, temperature=config.llm.temperature, top_p=config.llm.top_p,
-        top_k=config.llm.top_k, quality_profile=config.runtime.profile,
-    )
+    directory = create_plan(provider, store, request.prompt, request.duration, request.style, request.aspect_ratio,
+                            model=config.llm.model, temperature=config.llm.temperature, top_p=config.llm.top_p,
+                            top_k=config.llm.top_k, quality_profile=config.runtime.profile)
     return {"project_id": directory.name, "path": str(directory)}
 
 
@@ -126,9 +136,8 @@ def resume(project_id: UUID) -> dict[str, str]:
     provider.require_health()
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
-    directory = resume_plan(provider, store, project_id, model=config.llm.model,
-                            temperature=config.llm.temperature, top_p=config.llm.top_p,
-                            top_k=config.llm.top_k)
+    directory = resume_plan(provider, store, project_id, model=config.llm.model, temperature=config.llm.temperature,
+                            top_p=config.llm.top_p, top_k=config.llm.top_k)
     return {"project_id": directory.name, "path": str(directory)}
 
 
@@ -143,24 +152,38 @@ def qa(project_id: UUID) -> dict[str, object]:
     return report.model_dump(mode="json")
 
 
-@app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate-video")
-def regenerate_video(project_id: UUID, scene_id: UUID) -> dict[str, object]:
+@app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
+def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> dict[str, object]:
     config = _local_config()
     store = FilesystemStore(config.storage.root)
     scene = _scene(store, project_id, scene_id)
-    provider = build_video_provider(config)
-    result = generate_scene_video_with_recovery(
-        provider, store, project_id, scene, width=config.video.width,
-        height=config.video.height, fps=config.video.fps,
-    )
+    if request.stage == "image":
+        provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
+        result = generate_scene_image_with_recovery(provider, store, project_id, scene,
+                                                     model=config.image.model_path.name,
+                                                     width=config.image.width, height=config.image.height,
+                                                     steps=config.image.steps, guidance_scale=config.image.guidance_scale)
+        scene = result.scene.model_copy(update={"metadata": {**result.scene.metadata,
+            "image_recovery": {"attempts": result.attempts, "strategies": list(result.strategies)}}})
+        _persist_scene(store, project_id, scene)
+        attempts, strategies = result.attempts, list(result.strategies)
+    elif request.stage == "audio":
+        provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
+        artifact, _ = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+        attempts, strategies = 1, ["original"]
+    else:
+        provider = build_video_provider(config)
+        result = generate_scene_video_with_recovery(provider, store, project_id, scene,
+                                                     width=config.video.width, height=config.video.height,
+                                                     fps=config.video.fps)
+        scene = result.scene.model_copy(update={"metadata": {**result.scene.metadata,
+            "video_recovery": {"attempts": result.attempts, "strategies": list(result.strategies)}}})
+        _persist_scene(store, project_id, scene)
+        attempts, strategies = result.attempts, list(result.strategies)
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    return {
-        "scene": result.scene.model_dump(mode="json"),
-        "attempts": result.attempts,
-        "strategies": list(result.strategies),
-        "qa_passed": report.passed,
-    }
+    return {"scene": scene.model_dump(mode="json"), "attempts": attempts,
+            "strategies": strategies, "qa_passed": report.passed}
 
 
 @app.get("/api/projects/{project_id}/video")
@@ -172,5 +195,4 @@ def final_video(project_id: UUID) -> FileResponse:
 
 
 def run() -> None:
-    """Run the API on loopback only."""
     uvicorn.run(app, host="127.0.0.1", port=8765)
