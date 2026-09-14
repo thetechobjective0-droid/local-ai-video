@@ -4,7 +4,7 @@
 
 **IN PROGRESS**
 
-Phase 8 now has deterministic routing, centralized provider capabilities, project-level media orchestration, host resource snapshots, and deterministic scene-video cache keys.
+Phase 8 now has deterministic routing, centralized provider capabilities, project-level media orchestration, host resource snapshots, deterministic scene-video cache keys, and project asset lifecycle transitions.
 
 ## Implemented
 
@@ -20,6 +20,7 @@ Phase 8 now has deterministic routing, centralized provider capabilities, projec
 - Selected strategy, fallback usage, routing memory, and resource snapshot are persisted in scene metadata.
 - Scene-video generation derives a stable cache key from the input image hash, provider/model, prompts, dimensions, duration, FPS, and seed.
 - Existing scene-video artifacts are reused only when the cache key and output SHA-256 both validate.
+- Project media generation persists `ASSETS_GENERATING` before work, `ASSETS_READY` after all scenes succeed, and `FAILED` when generation raises.
 - CLI command: `video-agent generate-media <PROJECT_ID>`.
 - Unit coverage covers registry lookup and explicit motion capability routing.
 
@@ -62,6 +63,23 @@ Scene-video caching is content-addressed by a deterministic generation key. The 
 
 This cache is intentionally conservative: it reuses the current scene-video artifact rather than introducing a global cross-project media store before cache eviction, statistics, and lifecycle rules are defined.
 
+## Project lifecycle
+
+Media generation now records explicit project-level lifecycle states:
+
+```text
+STORYBOARD_READY
+       |
+       v
+ASSETS_GENERATING
+       |
+       +---- all scenes succeed ----> ASSETS_READY
+       |
+       +---- generation failure ----> FAILED
+```
+
+The transition is persisted atomically through `project.json`, and `updated_at` is refreshed on each transition.
+
 ## Important limitation
 
 The current orchestrator assumes scene images have already been generated. It does not yet invoke the image provider itself. This keeps image generation and media routing independently rerunnable.
@@ -70,12 +88,11 @@ Hardware acceptance remains pending on the target M4 Mac. Resource snapshots use
 
 ## Next
 
-1. Add project state transitions for `ASSETS_GENERATING` and `ASSETS_READY`.
-2. Add video QA before an AI clip is accepted as renderable.
-3. Preserve the deterministic fallback path when AI video generation is unavailable or fails.
-4. Centralize provider construction so CLI wiring does not duplicate provider knowledge.
-5. Expand caching into explicit project cache statistics/cleanup after lifecycle rules are defined.
+1. Add video QA before an AI clip is accepted as renderable.
+2. Preserve and validate the deterministic fallback path when AI video generation is unavailable or fails.
+3. Centralize provider construction so CLI wiring does not duplicate provider knowledge.
+4. Expand caching into explicit project cache statistics/cleanup after lifecycle rules are defined.
 
 ## Acceptance
 
-Hardware acceptance remains pending on the target M4 Mac. CI should validate deterministic routing, cache-key boundaries, and orchestration behavior; actual LTX model loading, memory consumption, generation latency, and visual quality require the target machine and locally stored model weights.
+Hardware acceptance remains pending on the target M4 Mac. CI should validate deterministic routing, cache-key boundaries, lifecycle transitions, and orchestration behavior; actual LTX model loading, memory consumption, generation latency, and visual quality require the target machine and locally stored model weights.
