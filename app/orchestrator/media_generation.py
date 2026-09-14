@@ -73,8 +73,9 @@ def generate_project_media(
                 selected = MediaType.IMAGE_MOTION
                 used_fallback = True
         elif selected is MediaType.IMAGE_MOTION:
+            motion_provider = fallback_provider if fallback_provider is not None else video_provider
             _, current = generate_scene_video(
-                video_provider,
+                motion_provider,
                 store,
                 project_id,
                 current,
