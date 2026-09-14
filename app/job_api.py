@@ -1,5 +1,6 @@
 """HTTP routes for local background jobs."""
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -7,8 +8,8 @@ from pydantic import BaseModel, Field
 
 from app.config import load_config
 from app.models.project import VideoProject
-from app.orchestrator.jobs import get_job_manager
-from app.orchestrator.planning_jobs import get_planning_job_manager
+from app.orchestrator.jobs import MediaJobManager, get_job_manager
+from app.orchestrator.planning_jobs import PlanningJobManager, get_planning_job_manager
 from app.storage.filesystem import FilesystemStore
 
 router = APIRouter()
@@ -29,16 +30,16 @@ def _store() -> FilesystemStore:
     return FilesystemStore(load_config(None).storage.root)
 
 
-def _manager():
+def _manager() -> MediaJobManager:
     return get_job_manager(_store())
 
 
-def _planning_manager():
+def _planning_manager() -> PlanningJobManager:
     return get_planning_job_manager(_store())
 
 
 @router.post("/api/projects/{project_id}/jobs/media", status_code=202)
-def create_media_job(project_id: UUID) -> dict[str, object]:
+def create_media_job(project_id: UUID) -> dict[str, Any]:
     manager = _manager()
     try:
         job = manager.submit(project_id)
@@ -50,7 +51,7 @@ def create_media_job(project_id: UUID) -> dict[str, object]:
 
 
 @router.get("/api/jobs/{job_id}")
-def get_media_job(job_id: UUID) -> dict[str, object]:
+def get_media_job(job_id: UUID) -> dict[str, Any]:
     try:
         return _manager().get(job_id).model_dump(mode="json")
     except FileNotFoundError:
@@ -58,12 +59,12 @@ def get_media_job(job_id: UUID) -> dict[str, object]:
 
 
 @router.get("/api/projects/{project_id}/jobs")
-def list_media_jobs(project_id: UUID) -> list[dict[str, object]]:
+def list_media_jobs(project_id: UUID) -> list[dict[str, Any]]:
     return [job.model_dump(mode="json") for job in _manager().list(project_id)]
 
 
 @router.post("/api/projects", status_code=202)
-def create_project_async(request: CreateProjectRequest) -> dict[str, object]:
+def create_project_async(request: CreateProjectRequest) -> dict[str, Any]:
     """Create project metadata immediately and plan it in the local worker."""
     config = load_config(None)
     if not config.runtime.local_only:
@@ -80,7 +81,7 @@ def create_project_async(request: CreateProjectRequest) -> dict[str, object]:
     )
     store = FilesystemStore(config.storage.root)
     directory = store.create_project(project)
-    job = get_planning_job_manager(store).submit(project.id)
+    job = _planning_manager().submit(project.id)
     return {
         "project_id": str(project.id),
         "path": str(directory),
@@ -90,7 +91,7 @@ def create_project_async(request: CreateProjectRequest) -> dict[str, object]:
 
 
 @router.get("/api/projects/{project_id}/planning-job")
-def planning_job(project_id: UUID) -> dict[str, object]:
+def planning_job(project_id: UUID) -> dict[str, Any]:
     jobs = _planning_manager().list(project_id)
     if not jobs:
         raise HTTPException(status_code=404, detail="planning job not found")
@@ -98,7 +99,7 @@ def planning_job(project_id: UUID) -> dict[str, object]:
 
 
 @router.get("/api/planning-jobs/{job_id}")
-def get_planning_job(job_id: UUID) -> dict[str, object]:
+def get_planning_job(job_id: UUID) -> dict[str, Any]:
     try:
         return _planning_manager().get(job_id).model_dump(mode="json")
     except FileNotFoundError:
