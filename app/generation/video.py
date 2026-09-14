@@ -7,16 +7,14 @@ from uuid import UUID
 
 from app.exceptions import VideoAgentError
 from app.generation.cache import cache_key
+from app.generation.video_qa import validate_scene_video
 from app.models.artifact import Artifact
 from app.models.scene import Scene
 from app.providers.video import VideoGenerationRequest, VideoProvider
 from app.storage.filesystem import FilesystemStore
 
 
-def _load_cached_video(
-    manifest_path: Path,
-    expected_key: str,
-) -> Artifact | None:
+def _load_cached_video(manifest_path: Path, expected_key: str) -> Artifact | None:
     """Return a valid cached video artifact when its generation key still matches."""
     if not manifest_path.is_file():
         return None
@@ -46,7 +44,7 @@ def generate_scene_video(
     fps: int = 16,
     seed: int | None = None,
 ) -> tuple[Artifact, Scene]:
-    """Generate a scene video from its persisted image and motion metadata."""
+    """Generate a scene video and accept it only after deterministic QA."""
     directory = store.project_dir(project_id)
     if not directory.is_dir():
         raise ValueError(f"project does not exist: {project_id}")
@@ -115,13 +113,7 @@ def generate_scene_video(
             duration_seconds=scene.duration_seconds,
             fps=fps,
             seed=seed,
-            metadata={
-                "scene_id": str(scene.id),
-                "scene_index": scene.index,
-                "width": width,
-                "height": height,
-                "cache_key": generation_key,
-            },
+            metadata={"scene_id": str(scene.id), "scene_index": scene.index, "width": width, "height": height},
         )
     )
     if not result.path.is_file() or result.path.stat().st_size == 0:
@@ -132,6 +124,12 @@ def generate_scene_video(
     if result.duration_seconds <= 0 or result.fps <= 0:
         raise VideoAgentError("video provider returned invalid video metadata")
 
+    qa = validate_scene_video(
+        result.path,
+        expected_duration=result.duration_seconds,
+        expected_fps=result.fps,
+        expected_resolution=(result.width, result.height),
+    )
     artifact = Artifact(
         project_id=project_id,
         scene_id=scene.id,
@@ -142,7 +140,7 @@ def generate_scene_video(
         model=result.model,
         sha256=actual_sha256,
         parameters={
-            "duration_seconds": result.duration_seconds,
+            "duration_seconds": qa["duration_seconds"],
             "fps": result.fps,
             "width": result.width,
             "height": result.height,
@@ -150,6 +148,7 @@ def generate_scene_video(
             "prompt": scene.motion_prompt,
             "negative_prompt": scene.negative_prompt,
             "cache_key": generation_key,
+            "qa": qa,
             **result.metadata,
         },
     )
