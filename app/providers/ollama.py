@@ -69,7 +69,9 @@ class OllamaProvider:
         for entry in raw_models:
             if isinstance(entry, dict) and isinstance(entry.get("name"), str):
                 names.append(entry["name"])
-        logger.info("[ollama] model listing COMPLETE count=%s models=%s", len(names), ", ".join(names))
+        logger.info(
+            "[ollama] model listing COMPLETE count=%s models=%s", len(names), ", ".join(names)
+        )
         return names
 
     def require_model(self, model: str) -> None:
@@ -90,7 +92,12 @@ class OllamaProvider:
         model = request.model or "qwen2.5-coder:32b"
         logger.info(
             "[ollama] generation START model=%s format=%s temperature=%s top_p=%s top_k=%s prompt_chars=%s",
-            model, request.format or "default", request.temperature, request.top_p, request.top_k, len(request.prompt),
+            model,
+            request.format or "default",
+            request.temperature,
+            request.top_p,
+            request.top_k,
+            len(request.prompt),
         )
         messages: list[dict[str, str]] = []
         if request.system:
@@ -101,10 +108,19 @@ class OllamaProvider:
             "messages": messages,
             "stream": False,
             "format": request.format,
-            "options": {"temperature": request.temperature, "top_p": request.top_p, "top_k": request.top_k},
+            "options": {
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "top_k": request.top_k,
+            },
         }
         body = json.dumps(payload).encode("utf-8")
-        http_request = Request(f"{self.base_url}/api/chat", data=body, headers={"Content-Type": "application/json"}, method="POST")
+        http_request = Request(
+            f"{self.base_url}/api/chat",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
             with urlopen(http_request, timeout=300) as response:
                 result = json.loads(response.read().decode("utf-8"))
@@ -125,7 +141,12 @@ class OllamaProvider:
         }
         logger.info(
             "[ollama] generation COMPLETE model=%s response_chars=%s duration_ns=%s prompt_tokens=%s eval_tokens=%s",
-            result.get("model", model), len(message["content"]), metadata["total_duration_ns"],
-            metadata["prompt_eval_count"], metadata["eval_count"],
+            result.get("model", model),
+            len(message["content"]),
+            metadata["total_duration_ns"],
+            metadata["prompt_eval_count"],
+            metadata["eval_count"],
         )
-        return LLMResponse(text=message["content"], model=str(result.get("model", model)), metadata=metadata)
+        return LLMResponse(
+            text=message["content"], model=str(result.get("model", model)), metadata=metadata
+        )

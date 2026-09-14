@@ -117,7 +117,10 @@ def create_plan(
     """Create a project first, then persist each validated Director stage."""
     logger.info(
         "[director] create_plan prompt_chars=%s duration=%ss style=%s aspect_ratio=%s",
-        len(prompt), duration_seconds, style, aspect_ratio,
+        len(prompt),
+        duration_seconds,
+        style,
+        aspect_ratio,
     )
     project = VideoProject(
         source_prompt=prompt,
@@ -199,9 +202,28 @@ def _run_plan(
         brief = _load_artifact(directory, "brief.json", CreativeBrief)
         if start_from == "brief" or brief is None:
             brief = _run_stage(
-                store, directory, project, "brief", provider, model, params,
-                {"prompt": project.source_prompt, "duration_seconds": project.duration_seconds, "style": project.style},
-                lambda: build_brief(provider, project.source_prompt, project.duration_seconds, project.style, model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                store,
+                directory,
+                project,
+                "brief",
+                provider,
+                model,
+                params,
+                {
+                    "prompt": project.source_prompt,
+                    "duration_seconds": project.duration_seconds,
+                    "style": project.style,
+                },
+                lambda: build_brief(
+                    provider,
+                    project.source_prompt,
+                    project.duration_seconds,
+                    project.style,
+                    model=model,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
                 ["brief.json"],
             )
             project.title = brief.title
@@ -215,9 +237,17 @@ def _run_plan(
         script = _load_artifact(directory, "script.json", Script)
         if start_from in {"brief", "script"} or script is None:
             script = _run_stage(
-                store, directory, project, "script", provider, model, params,
+                store,
+                directory,
+                project,
+                "script",
+                provider,
+                model,
+                params,
                 {"brief": brief.model_dump(mode="json")},
-                lambda: build_script(provider, brief, model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                lambda: build_script(
+                    provider, brief, model=model, temperature=temperature, top_p=top_p, top_k=top_k
+                ),
                 ["script.json"],
             )
             store.write_json(directory, "script.json", script.model_dump(mode="json"))
@@ -227,13 +257,31 @@ def _run_plan(
         storyboard = _load_artifact(directory, "storyboard.json", Storyboard)
         if start_from in {"brief", "script", "storyboard"} or storyboard is None:
             storyboard = _run_stage(
-                store, directory, project, "storyboard", provider, model, params,
+                store,
+                directory,
+                project,
+                "storyboard",
+                provider,
+                model,
+                params,
                 {"brief": brief.model_dump(mode="json"), "script": script.model_dump(mode="json")},
-                lambda: build_storyboard(provider, brief, script, model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                lambda: build_storyboard(
+                    provider,
+                    brief,
+                    script,
+                    model=model,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
                 ["storyboard.json"],
             )
             store.write_json(directory, "storyboard.json", storyboard.model_dump(mode="json"))
-            logger.info("[director] storyboard persisted project=%s scenes=%s", project.id, len(storyboard.scenes))
+            logger.info(
+                "[director] storyboard persisted project=%s scenes=%s",
+                project.id,
+                len(storyboard.scenes),
+            )
             _save_status(store, directory, project, ProjectStatus.STORYBOARD_READY)
     except Exception:
         logger.exception("[director] pipeline FAILED project=%s", project.id)

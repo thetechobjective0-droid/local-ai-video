@@ -169,9 +169,13 @@ class PlanningJobManager:
                     ) from retry_error
                 logger.info("[planning] resume retry completed project=%s", project.id)
             self._update(job_id, state="completed", completed_stage="storyboard", error=None)
-            logger.info("[planning] completed job=%s project=%s stage=storyboard", job.id, job.project_id)
+            logger.info(
+                "[planning] completed job=%s project=%s stage=storyboard", job.id, job.project_id
+            )
         except Exception as exc:
-            logger.exception("[planning] failed job=%s project=%s error=%s", job.id, job.project_id, exc)
+            logger.exception(
+                "[planning] failed job=%s project=%s error=%s", job.id, job.project_id, exc
+            )
             try:
                 self._update(job_id, state="failed", error=str(exc))
             finally:
@@ -186,7 +190,10 @@ class PlanningJobManager:
                     )
                     logger.info("[planning] project marked failed project=%s", project.id)
                 except (OSError, ValueError):
-                    logger.exception("[planning] could not persist failed project status project=%s", job.project_id)
+                    logger.exception(
+                        "[planning] could not persist failed project status project=%s",
+                        job.project_id,
+                    )
 
 
 _manager: PlanningJobManager | None = None

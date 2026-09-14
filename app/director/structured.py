@@ -31,17 +31,23 @@ def parse_json(text: str, model: type[T]) -> T:
             f"{'.'.join(str(part) for part in error['loc'])}: {error['msg']}"
             for error in exc.errors()
         )
-        logger.warning("[structured] schema validation failed model=%s details=%s", model.__name__, details)
+        logger.warning(
+            "[structured] schema validation failed model=%s details=%s", model.__name__, details
+        )
         raise StructuredOutputError(f"model JSON failed schema validation: {details}") from exc
     logger.info("[structured] schema validation passed model=%s", model.__name__)
     return result
 
 
-def generate_validated(provider: LLMProvider, request: LLMRequest, model: type[T], repair_attempts: int = 2) -> T:
+def generate_validated(
+    provider: LLMProvider, request: LLMRequest, model: type[T], repair_attempts: int = 2
+) -> T:
     """Generate structured output and retry only bounded validation failures."""
     if repair_attempts < 0:
         raise ValueError("repair_attempts must be non-negative")
-    logger.info("[structured] generation START model=%s repair_attempts=%s", model.__name__, repair_attempts)
+    logger.info(
+        "[structured] generation START model=%s repair_attempts=%s", model.__name__, repair_attempts
+    )
     response = provider.generate(request)
     logger.info("[structured] initial response received model=%s", model.__name__)
     try:
@@ -50,10 +56,19 @@ def generate_validated(provider: LLMProvider, request: LLMRequest, model: type[T
         return result
     except StructuredOutputError as original_error:
         last_error: Exception = original_error
-        logger.warning("[structured] initial validation failed model=%s error=%s", model.__name__, original_error)
+        logger.warning(
+            "[structured] initial validation failed model=%s error=%s",
+            model.__name__,
+            original_error,
+        )
 
     for attempt in range(1, repair_attempts + 1):
-        logger.info("[structured] repair START model=%s attempt=%s/%s", model.__name__, attempt, repair_attempts)
+        logger.info(
+            "[structured] repair START model=%s attempt=%s/%s",
+            model.__name__,
+            attempt,
+            repair_attempts,
+        )
         repair_request = LLMRequest(
             system=(
                 "Repair the supplied model output. Return ONLY valid JSON matching "
@@ -71,14 +86,29 @@ def generate_validated(provider: LLMProvider, request: LLMRequest, model: type[T
             format="json",
         )
         response = provider.generate(repair_request)
-        logger.info("[structured] repair response received model=%s attempt=%s/%s", model.__name__, attempt, repair_attempts)
+        logger.info(
+            "[structured] repair response received model=%s attempt=%s/%s",
+            model.__name__,
+            attempt,
+            repair_attempts,
+        )
         try:
             result = parse_json(response.text, model)
-            logger.info("[structured] generation COMPLETE model=%s attempt=repair-%s", model.__name__, attempt)
+            logger.info(
+                "[structured] generation COMPLETE model=%s attempt=repair-%s",
+                model.__name__,
+                attempt,
+            )
             return result
         except StructuredOutputError as exc:
             last_error = exc
-            logger.warning("[structured] repair validation failed model=%s attempt=%s/%s error=%s", model.__name__, attempt, repair_attempts, exc)
+            logger.warning(
+                "[structured] repair validation failed model=%s attempt=%s/%s error=%s",
+                model.__name__,
+                attempt,
+                repair_attempts,
+                exc,
+            )
 
     raise StructuredOutputError(
         f"structured output remained invalid after {repair_attempts} repair attempt(s): {last_error}"
