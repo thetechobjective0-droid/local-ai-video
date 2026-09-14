@@ -42,7 +42,9 @@ class MediaJobManager:
 
     def __init__(self, store: FilesystemStore, *, max_workers: int = 1) -> None:
         self.store = store
-        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="video-agent-job")
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers, thread_name_prefix="video-agent-job"
+        )
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
         self._recover_stale_jobs()
@@ -58,7 +60,9 @@ class MediaJobManager:
     def _save(self, job: MediaJob) -> MediaJob:
         path = self._path(job.id)
         payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False) as temp:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False
+        ) as temp:
             temp.write(payload)
             temp_path = Path(temp.name)
         temp_path.replace(path)
@@ -73,7 +77,15 @@ class MediaJobManager:
             except (OSError, ValueError):
                 continue
             if job.state in {"queued", "running"}:
-                self._save(job.model_copy(update={"state": "interrupted", "updated_at": datetime.now(timezone.utc), "error": "worker process restarted"}))
+                self._save(
+                    job.model_copy(
+                        update={
+                            "state": "interrupted",
+                            "updated_at": datetime.now(timezone.utc),
+                            "error": "worker process restarted",
+                        }
+                    )
+                )
 
     def get(self, job_id: UUID) -> MediaJob:
         path = self._path(job_id)
@@ -96,7 +108,14 @@ class MediaJobManager:
     def submit(self, project_id: UUID) -> MediaJob:
         scenes = self._load_scenes(project_id)
         now = datetime.now(timezone.utc)
-        job = MediaJob(id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now, scene_count=len(scenes))
+        job = MediaJob(
+            id=uuid4(),
+            project_id=project_id,
+            state="queued",
+            created_at=now,
+            updated_at=now,
+            scene_count=len(scenes),
+        )
         self._save(job)
         future = self._executor.submit(self._run, job.id)
         with self._lock:
@@ -122,22 +141,50 @@ class MediaJobManager:
         return self._save(updated)
 
     def _run(self, job_id: UUID) -> None:
-        job = self._update(job_id, state="running", started_at=datetime.now(timezone.utc), error=None)
+        job = self._update(
+            job_id, state="running", started_at=datetime.now(timezone.utc), error=None
+        )
         try:
             config = load_config(None)
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
             video_provider = build_video_provider(config)
-            image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
+            image_provider = DiffusersImageProvider(
+                config.image.model_path, device=config.image.device
+            )
             capability = get_provider_capabilities(config.video.provider).video
 
             def progress(completed: int, total: int) -> None:
                 self._update(job_id, completed_scenes=completed, scene_count=total)
 
-            generate_project_media(self.store, job.project_id, self._load_scenes(job.project_id), video_provider=video_provider, image_provider=image_provider, image_model=config.image.model_path.name, image_width=config.image.width, image_height=config.image.height, image_steps=config.image.steps, image_guidance_scale=config.image.guidance_scale, video_capability=capability, fallback_provider=build_video_fallback(config), width=config.video.width, height=config.video.height, fps=config.video.fps, progress_callback=progress)
-            self._update(job_id, state="completed", completed_scenes=job.scene_count, completed_at=datetime.now(timezone.utc))
+            generate_project_media(
+                self.store,
+                job.project_id,
+                self._load_scenes(job.project_id),
+                video_provider=video_provider,
+                image_provider=image_provider,
+                image_model=config.image.model_path.name,
+                image_width=config.image.width,
+                image_height=config.image.height,
+                image_steps=config.image.steps,
+                image_guidance_scale=config.image.guidance_scale,
+                video_capability=capability,
+                fallback_provider=build_video_fallback(config),
+                width=config.video.width,
+                height=config.video.height,
+                fps=config.video.fps,
+                progress_callback=progress,
+            )
+            self._update(
+                job_id,
+                state="completed",
+                completed_scenes=job.scene_count,
+                completed_at=datetime.now(timezone.utc),
+            )
         except Exception as exc:
-            self._update(job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc))
+            self._update(
+                job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc)
+            )
         finally:
             with self._lock:
                 self._futures.pop(job_id, None)
