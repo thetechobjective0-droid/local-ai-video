@@ -20,6 +20,7 @@ from app.storage.filesystem import FilesystemStore
 @dataclass(frozen=True)
 class QAFailure:
     """One actionable QA failure tied to a scene or project artifact."""
+
     scope: str
     message: str
 
@@ -27,11 +28,18 @@ class QAFailure:
 @dataclass(frozen=True)
 class QAReport:
     """Deterministic project QA result."""
+
     passed: bool
     failures: tuple[QAFailure, ...]
 
 
-def validate_project(store: FilesystemStore, project_id: UUID, *, ffprobe_command: str = "ffprobe", ffmpeg_command: str = "ffmpeg") -> QAReport:
+def validate_project(
+    store: FilesystemStore,
+    project_id: UUID,
+    *,
+    ffprobe_command: str = "ffprobe",
+    ffmpeg_command: str = "ffmpeg",
+) -> QAReport:
     """Validate project assets, timeline, subtitles, and final video when present."""
     failures: list[QAFailure] = []
     directory = store.project_dir(project_id)
@@ -54,7 +62,13 @@ def validate_project(store: FilesystemStore, project_id: UUID, *, ffprobe_comman
     final_video = directory / "final.mp4"
     if final_video.exists():
         try:
-            validate_video(final_video, expected_duration=project.duration_seconds, expected_fps=timeline.fps if timeline else project.fps, expected_resolution=timeline.resolution if timeline else project.resolution, ffprobe_command=ffprobe_command)
+            validate_video(
+                final_video,
+                expected_duration=project.duration_seconds,
+                expected_fps=timeline.fps if timeline else project.fps,
+                expected_resolution=timeline.resolution if timeline else project.resolution,
+                ffprobe_command=ffprobe_command,
+            )
             validate_audio_quality(final_video, ffmpeg_command=ffmpeg_command)
         except (VideoAgentError, ValueError) as exc:
             failures.append(QAFailure("final-video", str(exc)))
@@ -95,7 +109,14 @@ def _load_artifact(directory: Path, filename: str, failures: list[QAFailure]) ->
         return None
 
 
-def _validate_scene_assets(directory: Path, project: VideoProject, scene: Scene, failures: list[QAFailure], ffprobe_command: str, ffmpeg_command: str) -> None:
+def _validate_scene_assets(
+    directory: Path,
+    project: VideoProject,
+    scene: Scene,
+    failures: list[QAFailure],
+    ffprobe_command: str,
+    ffmpeg_command: str,
+) -> None:
     scope = f"scene-{scene.index:04d}"
     if scene.image_asset is not None:
         artifact = _load_artifact(directory, f"scene-{scene.index:04d}-image.json", failures)
@@ -112,7 +133,11 @@ def _validate_scene_assets(directory: Path, project: VideoProject, scene: Scene,
             if artifact.id != scene.audio_asset:
                 failures.append(QAFailure(scope, "audio asset UUID does not match scene manifest"))
             try:
-                validate_audio(artifact.path, expected_duration=scene.duration_seconds, ffprobe_command=ffprobe_command)
+                validate_audio(
+                    artifact.path,
+                    expected_duration=scene.duration_seconds,
+                    ffprobe_command=ffprobe_command,
+                )
                 validate_audio_quality(artifact.path, ffmpeg_command=ffmpeg_command)
             except (VideoAgentError, ValueError) as exc:
                 failures.append(QAFailure(scope, f"audio QA failed: {exc}"))
@@ -123,12 +148,21 @@ def _validate_scene_assets(directory: Path, project: VideoProject, scene: Scene,
                 failures.append(QAFailure(scope, "video asset UUID does not match scene manifest"))
             try:
                 params: dict[str, Any] = artifact.parameters
-                validate_video(artifact.path, expected_duration=scene.duration_seconds, expected_fps=int(params.get("fps", project.fps)), expected_resolution=f"{params.get('width')}x{params.get('height')}", require_audio=False, ffprobe_command=ffprobe_command)
+                validate_video(
+                    artifact.path,
+                    expected_duration=scene.duration_seconds,
+                    expected_fps=int(params.get("fps", project.fps)),
+                    expected_resolution=f"{params.get('width')}x{params.get('height')}",
+                    require_audio=False,
+                    ffprobe_command=ffprobe_command,
+                )
             except (VideoAgentError, ValueError) as exc:
                 failures.append(QAFailure(scope, f"video QA failed: {exc}"))
 
 
-def _validate_timeline(project: VideoProject, scenes: list[Scene], timeline: Timeline, failures: list[QAFailure]) -> None:
+def _validate_timeline(
+    project: VideoProject, scenes: list[Scene], timeline: Timeline, failures: list[QAFailure]
+) -> None:
     if timeline.project_id != project.id:
         failures.append(QAFailure("timeline", "timeline project UUID does not match project"))
     if abs(timeline.duration_seconds - project.duration_seconds) > 0.05:
@@ -136,20 +170,30 @@ def _validate_timeline(project: VideoProject, scenes: list[Scene], timeline: Tim
     cursor = 0.0
     for item in sorted(timeline.scenes, key=lambda scene: scene.index):
         if abs(item.start_seconds - cursor) > 1e-6:
-            failures.append(QAFailure(f"scene-{item.index:04d}", "timeline contains a timing gap or overlap"))
+            failures.append(
+                QAFailure(f"scene-{item.index:04d}", "timeline contains a timing gap or overlap")
+            )
         if item.duration_seconds <= 0:
-            failures.append(QAFailure(f"scene-{item.index:04d}", "timeline duration is not positive"))
+            failures.append(
+                QAFailure(f"scene-{item.index:04d}", "timeline duration is not positive")
+            )
         cursor += item.duration_seconds
     if abs(cursor - timeline.duration_seconds) > 0.05:
-        failures.append(QAFailure("timeline", "timeline scene durations do not sum to timeline duration"))
+        failures.append(
+            QAFailure("timeline", "timeline scene durations do not sum to timeline duration")
+        )
     scene_ids = {scene.id for scene in scenes}
     timeline_ids = {scene.scene_id for scene in timeline.scenes}
     missing = scene_ids - timeline_ids
     if missing:
-        failures.append(QAFailure("timeline", f"scenes missing from timeline: {sorted(map(str, missing))}"))
+        failures.append(
+            QAFailure("timeline", f"scenes missing from timeline: {sorted(map(str, missing))}")
+        )
 
 
-def _validate_subtitles(directory: Path, timeline: Timeline | None, failures: list[QAFailure]) -> None:
+def _validate_subtitles(
+    directory: Path, timeline: Timeline | None, failures: list[QAFailure]
+) -> None:
     if timeline is None:
         return
     path = directory / ("subtitles.vtt" if timeline.subtitle_format == "vtt" else "subtitles.srt")
