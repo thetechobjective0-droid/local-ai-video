@@ -4,7 +4,12 @@ import json
 
 from app.director.brief import CreativeBrief
 from app.director.prompts import PROMPT_VERSION, load_prompt
-from app.director.schemas import Script, Storyboard, validate_storyboard_duration
+from app.director.schemas import (
+    Script,
+    Storyboard,
+    validate_script_duration,
+    validate_storyboard_duration,
+)
 from app.director.structured import generate_validated
 from app.providers.base import LLMProvider, LLMRequest
 
@@ -43,7 +48,9 @@ def build_script(provider: LLMProvider, brief: CreativeBrief, *, model: str | No
             brief=json.dumps(brief.model_dump(mode="json"), ensure_ascii=False)
         ), model=model, temperature=temperature, top_p=top_p, top_k=top_k,
     )
-    return generate_validated(provider, request, Script)
+    script = generate_validated(provider, request, Script)
+    validate_script_duration(script, brief.duration_seconds)
+    return script
 
 
 def build_storyboard(provider: LLMProvider, brief: CreativeBrief, script: Script, *,
