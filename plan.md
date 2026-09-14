@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. The next implementation milestone is **Phase 10 — Agentic Recovery and Refinement**. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
+Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. **Phase 10 — Agentic Recovery and Refinement is now in progress**, with a bounded recovery foundation implemented. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -134,15 +134,13 @@ Implemented Python/uv foundation, configuration, CLI, structured logging, YAML c
 
 Implemented local Ollama provider, loopback-only endpoint enforcement, model preflight, validated creative brief/script/storyboard generation, bounded structured-output repair, prompt versioning, persistence, atomic artifacts, project status transitions, GenerationRun metadata, and Director resume behavior.
 
-Remaining machine-level acceptance: real M4 Ollama inference and further schema/narration compatibility refinement.
-
 ---
 
 # 11. Phase 2 — Script and Storyboard
 
 **Status: IMPLEMENTED BASELINE**
 
-Implemented scene timing/non-overlap and target-duration validation plus scene visual/motion/narration data used by downstream media generation. Further schema enrichment remains possible without weakening validation boundaries.
+Implemented scene timing/non-overlap and target-duration validation plus scene visual/motion/narration data used by downstream media generation.
 
 ---
 
@@ -150,7 +148,7 @@ Implemented scene timing/non-overlap and target-duration validation plus scene v
 
 **Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
 
-Implemented `ImageProvider`, local Diffusers image generation, MPS/CPU selection, local-files-only model loading, deterministic generation parameters, output hashing, persistence, and per-scene generation.
+Implemented local Diffusers image generation, MPS/CPU selection, local-files-only loading, deterministic parameters, hashing, persistence, and per-scene generation.
 
 ---
 
@@ -158,7 +156,7 @@ Implemented `ImageProvider`, local Diffusers image generation, MPS/CPU selection
 
 **Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
 
-Implemented `TTSProvider`, macOS Speech `say`, per-scene synthesis, WAV metadata/duration capture, narration assembly, normalization, and persistence.
+Implemented macOS Speech `say`, per-scene synthesis, WAV metadata/duration capture, narration assembly, normalization, and persistence.
 
 ---
 
@@ -166,7 +164,7 @@ Implemented `TTSProvider`, macOS Speech `say`, per-scene synthesis, WAV metadata
 
 **Status: IMPLEMENTED**
 
-Implemented deterministic SRT/WebVTT generation and canonical timeline building used by rendering and project QA.
+Implemented deterministic SRT/WebVTT generation and canonical timeline building.
 
 ---
 
@@ -174,7 +172,7 @@ Implemented deterministic SRT/WebVTT generation and canonical timeline building 
 
 **Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
 
-Implemented deterministic FFmpeg rendering, still-image/video scene handling, narration integration, silent fallback, H.264/AAC MP4 output, ffprobe validation, final artifact hashing, and render metadata.
+Implemented deterministic FFmpeg rendering, still/video scene handling, narration integration, H.264/AAC MP4 output, ffprobe validation, hashing, and render metadata.
 
 ---
 
@@ -184,19 +182,13 @@ Implemented deterministic FFmpeg rendering, still-image/video scene handling, na
 
 Implemented video provider contract, deterministic FFmpeg motion provider, local LTX image-to-video provider, capability metadata, scene-video persistence, deterministic cache keys, and scene-video QA before artifact acceptance.
 
-LTX model loading, memory use, latency, and visual quality remain target-M4 acceptance work.
-
 ---
 
 # 17. Phase 8 — Scene-Level Media Strategy
 
 **Status: IMPLEMENTED BASELINE — HARDWARE ACCEPTANCE PENDING**
 
-Implemented deterministic scene media selection, centralized video capability registry, host resource snapshots, memory-aware routing, image-to-video selection, deterministic motion fallback, project-level media orchestration, asset lifecycle transitions, deterministic scene-video cache keys, validated cache reuse, scene-video FFprobe/decode QA, and `generate-media` CLI integration.
-
-The LLM does not execute routing decisions directly; application code enforces capabilities, duration limits, memory policy, and fallback rules.
-
-Remaining hardening: provider construction centralization, stronger fallback guarantees, explicit cache statistics/cleanup, and broader lifecycle/resume hardening.
+Implemented deterministic scene media selection, centralized video capability registry, host resource snapshots, memory-aware routing, image-to-video selection, deterministic motion fallback, project-level orchestration, asset lifecycle transitions, deterministic cache keys, validated cache reuse, scene-video QA, and `generate-media` CLI integration.
 
 ---
 
@@ -204,62 +196,41 @@ Remaining hardening: provider construction centralization, stronger fallback gua
 
 **Status: COMPLETE — DETERMINISTIC QA**
 
-Implemented deterministic QA across generated media and the complete project boundary.
-
-### Media integrity
-
-- image existence, PNG signature/IHDR, dimensions, and SHA-256
-- audio existence, FFprobe decode/stream validation, and duration tolerance
-- video existence, FFprobe metadata, stream validation, duration, resolution/FPS, and complete FFmpeg decode
-
-### Audio quality
-
-- FFmpeg `volumedetect` peak measurement
-- configurable clipping/headroom gate
-- FFmpeg `silencedetect` analysis
-- entirely-silent narration rejection
-- measured peak, duration, silence-event count, and silent-duration reporting
-
-### Project QA
-
-- project/scene/artifact manifest validation
-- scene/artifact UUID consistency
-- per-scene image/audio/video validation
-- timeline project/duration/continuity validation
-- scene coverage validation
-- subtitle file validation
-- final MP4 validation
-- final audio quality validation
-
-### Reporting and targeted regeneration
-
-```bash
-video-agent qa <PROJECT_ID>
-video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage image
-video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage audio
-video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage video
-video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage all
-```
-
-`qa-report.json` persists schema version, pass/fail state, exact failure scope, and actionable messages. Targeted regeneration invalidates affected downstream artifacts/cache state and reruns QA.
-
-### Phase 9 acceptance
-
-**Deterministic Phase 9 implementation is complete.** CI validates repository behavior. Target-M4 inference, memory pressure, generation latency, and subjective visual quality remain hardware/evaluation concerns and are not falsely marked as CI acceptance.
+Implemented image, audio, video, timeline, subtitle, project, and final-render validation. Audio includes loudness/peak and silence checks. QA persists machine-readable `qa-report.json`. Targeted scene regeneration supports image/audio/video/all stages, invalidates affected downstream state, and reruns QA.
 
 ---
 
 # 19. Phase 10 — Agentic Recovery and Refinement
 
-**Status: NEXT**
+**Status: IN PROGRESS — BOUNDED RECOVERY FOUNDATION**
 
-Implement bounded recovery around deterministic QA and provider failures. Initial budgets: LLM structured-output repairs 2, image retries 2, video retries 2, render retries 1. Recovery may simplify prompts, adjust safe resource parameters, rewrite narration within policy, or select deterministic fallbacks. No infinite loops or autonomous policy changes.
+Recovery is explicitly finite and deterministic. Implemented `RecoveryPolicy`, `RecoveryResult`, and `run_bounded()` with zero-based attempt numbers supplied to each operation.
+
+Current budgets:
+
+```text
+LLM:    3 total attempts (initial + 2 repairs)
+Image:  3 total attempts (initial + 2 retries)
+Video:  3 total attempts (initial + 2 retries)
+Render: 2 total attempts (initial + 1 retry)
+```
+
+The recovery primitive propagates final failures and does not alter local-only policy, provider selection, filesystem boundaries, or resource constraints.
+
+Next Phase 10 increments:
+
+1. Integrate bounded recovery into image/video generation.
+2. Add deterministic prompt/settings refinement between attempts.
+3. Add narration duration correction.
+4. Add bounded render recovery.
+5. Persist recovery attempt metadata.
+6. Complete Phase 10 acceptance.
 
 ---
 
 # 20. Phase 11 — Web API and UI
 
-FastAPI target endpoints cover projects, planning, generation, scene generation, rendering, resume, artifacts, events, health, and providers. The local UI should expose prompt, duration, aspect ratio, style, language, voice, quality, scene preview, regeneration, rendering, and final-video preview.
+FastAPI target endpoints cover projects, planning, generation, scene generation, rendering, resume, artifacts, events, health, and providers. Local UI should expose prompt, duration, aspect ratio, style, language, voice, quality, scene preview, regeneration, rendering, and final-video preview.
 
 ---
 
