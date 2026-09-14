@@ -50,6 +50,10 @@ addopts = "-ra --strict-config --strict-markers"
 python_version = "3.11"
 strict = true
 
+[[tool.mypy.overrides]]
+module = ["torch", "diffusers", "diffusers.*", "yaml"]
+ignore_missing_imports = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
