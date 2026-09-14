@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from time import monotonic
+from typing import Any
 
 from app.exceptions import ProviderUnavailableError, VideoAgentError
 from app.providers.image import ImageGenerationRequest, ImageResult
@@ -25,7 +26,7 @@ class DiffusersImageProvider:
         if device not in {"mps", "cpu"}:
             raise ValueError("image device must be 'mps' or 'cpu'")
 
-    def _load_pipeline(self) -> object:
+    def _load_pipeline(self) -> Any:
         try:
             import torch
             from diffusers import AutoPipelineForText2Image
@@ -44,8 +45,7 @@ class DiffusersImageProvider:
             local_files_only=True,
             use_safetensors=True,
         )
-        pipeline = pipeline.to(self.device)
-        return pipeline
+        return pipeline.to(self.device)
 
     def generate(self, request: ImageGenerationRequest) -> ImageResult:
         if not request.prompt.strip():
