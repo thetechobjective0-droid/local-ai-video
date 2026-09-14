@@ -60,7 +60,7 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
         raise typer.BadParameter("local_only must remain enabled")
     if app_config.tts.provider != "macos_say":
         raise typer.BadParameter("only the local macOS Speech provider is supported in Phase 4")
-    provider = MacOSTTSProvider(sample_rate=app_config.ttts.sample_rate)
+    provider = MacOSTTSProvider(sample_rate=app_config.tts.sample_rate)
     return provider, FilesystemStore(app_config.storage.root)
 
 
