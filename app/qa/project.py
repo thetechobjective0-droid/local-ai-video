@@ -10,6 +10,7 @@ from app.models.artifact import Artifact
 from app.models.project import VideoProject
 from app.models.scene import Scene
 from app.models.timeline import Timeline
+from app.qa.audio_quality import validate_audio_quality
 from app.qa.media import validate_audio, validate_image
 from app.render.validator import validate_video
 from app.storage.filesystem import FilesystemStore
@@ -36,6 +37,7 @@ def validate_project(
     project_id: UUID,
     *,
     ffprobe_command: str = "ffprobe",
+    ffmpeg_command: str = "ffmpeg",
 ) -> QAReport:
     """Validate project assets, timeline, subtitles, and final video when present."""
     failures: list[QAFailure] = []
@@ -50,7 +52,7 @@ def validate_project(
         failures.append(QAFailure("project", "no valid scene manifests found"))
 
     for scene in scenes:
-        _validate_scene_assets(directory, project, scene, failures, ffprobe_command)
+        _validate_scene_assets(directory, project, scene, failures, ffprobe_command, ffmpeg_command)
 
     timeline_path = directory / "timeline.json"
     timeline = _load_timeline(timeline_path, failures)
@@ -117,6 +119,7 @@ def _validate_scene_assets(
     scene: Scene,
     failures: list[QAFailure],
     ffprobe_command: str,
+    ffmpeg_command: str,
 ) -> None:
     scope = f"scene-{scene.index:04d}"
     if scene.image_asset is not None:
@@ -134,13 +137,11 @@ def _validate_scene_assets(
             if artifact.id != scene.audio_asset:
                 failures.append(QAFailure(scope, "audio asset UUID does not match scene manifest"))
             try:
-                validate_audio(
-                    artifact.path,
-                    expected_duration=scene.duration_seconds,
-                    ffprobe_command=ffprobe_command,
-                )
-            except VideoAgentError as exc:
-                failures.append(QAFailure(scope, f"audio QA failed: {exc}"))
+                validate_audio(artifact.path, expected_duration=scene.duration_seconds, ffprobe_command=ffprobe_command)
+                quality = validate_audio_quality(artifact.path, ffmpeg_command=ffmpeg_command)
+                artifact.parameters["qa_audio_quality"] = quality
+            except (VideoAgentError, ValueError) as exc:
+                failures.append(QAFailure(scope, f"audio quality QA failed: {exc}"))
     if scene.video_asset is not None:
         artifact = _load_artifact(directory, f"scene-{scene.index:04d}-video.json", failures)
         if artifact is not None:
@@ -159,12 +160,7 @@ def _validate_scene_assets(
                 failures.append(QAFailure(scope, f"video QA failed: {exc}"))
 
 
-def _validate_timeline(
-    project: VideoProject,
-    scenes: list[Scene],
-    timeline: Timeline,
-    failures: list[QAFailure],
-) -> None:
+def _validate_timeline(project: VideoProject, scenes: list[Scene], timeline: Timeline, failures: list[QAFailure]) -> None:
     if timeline.project_id != project.id:
         failures.append(QAFailure("timeline", "timeline project UUID does not match project"))
     if abs(timeline.duration_seconds - project.duration_seconds) > 0.05:
@@ -185,11 +181,7 @@ def _validate_timeline(
         failures.append(QAFailure("timeline", f"scenes missing from timeline: {sorted(map(str, missing))}"))
 
 
-def _validate_subtitles(
-    directory: Path,
-    timeline: Timeline | None,
-    failures: list[QAFailure],
-) -> None:
+def _validate_subtitles(directory: Path, timeline: Timeline | None, failures: list[QAFailure]) -> None:
     if timeline is None:
         return
     path = directory / ("subtitles.vtt" if timeline.subtitle_format == "vtt" else "subtitles.srt")
