@@ -56,10 +56,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - worker delegates to existing `generate_project_media`; no generation logic is duplicated
 - atomic job persistence and durable timestamps/errors
 - per-scene progress persistence (`completed_scenes` / `scene_count`)
-- API submission/status/list endpoints:
-  - `POST /api/projects/{project_id}/jobs/media`
-  - `GET /api/jobs/{job_id}`
-  - `GET /api/projects/{project_id}/jobs`
+- API submission/status/list endpoints
 - HTTP 202 submission semantics
 - browser background-generation control
 - 2-second job polling and automatic artifact refresh on terminal state
@@ -69,11 +66,11 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - planning request validation is centralized in `app/job_api.py`; the unused duplicate planning router module was removed
 - background job API helpers and response boundaries are explicitly typed for strict mypy
 - web API helpers, dynamic JSON response boundaries, provider instances, and configuration access are explicitly typed for strict mypy
-- Ruff CI now enforces correctness-oriented `E`, `F`, and `B` rules; formatter handles layout and long embedded strings are exempted from E501, while Typer option/argument declarations are treated as intentional immutable calls
-- subtitle cue generation now uses explicit `zip(..., strict=True)` semantics
+- media job listing avoids shadowing the `list` method name, eliminating a strict-mypy type resolution error
 - strict mypy configuration keeps heavy optional ML packages out of the CI environment while preserving type checking of application boundaries
 - corrected Python health-check field typing for strict mypy
 - typed the optional LTX video provider
+- Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
