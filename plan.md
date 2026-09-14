@@ -2,9 +2,9 @@
 
 ## Current implementation checkpoint
 
-Phase 0 is code-complete pending validation on the target M4 Mac. Phase 1 now includes the local Ollama Director, validated brief/script/storyboard generation, bounded structured-output repair, versioned prompts, persisted project state, atomic JSON artifacts, resumable Director execution, generation-run metadata, and Ollama model preflight checks.
+Phase 0–8 are substantially implemented. Phase 9 deterministic quality assurance is implemented, including project QA reporting, targeted scene regeneration, media integrity validation, timeline/subtitle validation, and final-video validation. The next implementation milestone is Phase 10 bounded agentic recovery and refinement. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
 
-The detailed architecture and phased plan below remains the source of truth. The immediate next milestone is **real M4 acceptance of the Phase 1 Director pipeline**, followed by the first local image-provider vertical slice.
+The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
 ---
 
@@ -12,52 +12,20 @@ The detailed architecture and phased plan below remains the source of truth. The
 
 Build a local-first AI video production system for Apple Silicon that accepts a natural-language idea and turns it into a finished video through a reproducible, inspectable pipeline.
 
-Example:
-
-```bash
-video-agent create "Create a 60-second cinematic video explaining how AI agents work" \
-  --duration 60 \
-  --style cinematic \
-  --aspect-ratio 16:9
-```
-
-The system progressively automates requirements extraction, creative brief, script, storyboard, visual prompts, local image/video generation, local TTS, subtitles, music/ambience, timeline assembly, quality validation, rendering, and project archiving.
-
-The local LLM is the **director/orchestrator**. Specialized models and deterministic software generate and validate media. LLM output is never treated as executable code.
+The local LLM is the director/orchestrator. Specialized models and deterministic software generate and validate media. LLM output is never treated as executable code.
 
 ---
 
 # 2. Target Hardware and Runtime
 
-Primary target:
+Primary target: Apple M4, 36 GB unified memory, macOS/Apple Silicon, Metal-compatible acceleration where supported, local-first inference, and no paid cloud inference required for the core pipeline.
 
-- Apple M4
-- 36 GB unified memory
-- macOS / Apple Silicon
-- Metal-compatible acceleration where supported
-- Local-first inference
-- No paid cloud inference required for the core pipeline
-
-The application is resource-aware. It must not assume that arbitrary large video models fit in 36 GB unified memory.
-
-### Resource policy
-
-Track:
-
-- total/available memory where measurable
-- disk space
-- loaded providers/models
-- generation concurrency
-- operation duration
-- output sizes
-
-Default heavyweight media concurrency: **1** until real measurements justify more.
-
-### Quality profiles
-
-- **Fast:** fastest practical models/settings, lower media resolution, minimal post-processing.
-- **Balanced:** default practical quality/performance.
-- **Quality:** highest locally practical settings with longer execution time.
+Resource policy:
+- track total/available memory and disk where measurable
+- track provider/model and generation duration
+- heavyweight media concurrency defaults to 1 until measured
+- Fast, Balanced, and Quality profiles remain supported
+- high-memory video routing is gated by host resource availability
 
 ---
 
@@ -80,285 +48,52 @@ Default heavyweight media concurrency: **1** until real measurements justify mor
 # 4. System Architecture
 
 ```text
-                         USER
-                           │
-                           ▼
-                  ┌────────────────┐
-                  │ CLI / Web UI   │
-                  └───────┬────────┘
-                          │
-                          ▼
-                  ┌────────────────┐
-                  │ Project API    │
-                  └───────┬────────┘
-                          │
-                          ▼
-                  ┌────────────────┐
-                  │ Orchestrator   │
-                  └───────┬────────┘
-                          │
-                          ▼
-                  ┌────────────────┐
-                  │ Local Director │
-                  │ Ollama/Qwen/   │
-                  │ Llama          │
-                  └───────┬────────┘
-                          │
-                    project plan
-                          │
-          ┌───────────────┼────────────────┐
-          ▼               ▼                ▼
-      Image           Video              TTS
-      Provider        Provider          Provider
-          │               │                │
-          └───────────────┼────────────────┘
-                          ▼
-                  ┌────────────────┐
-                  │ QA / Validation │
-                  └───────┬────────┘
-                          ▼
-                  ┌────────────────┐
-                  │ FFmpeg Render  │
-                  └───────┬────────┘
-                          ▼
-                       final.mp4
+USER → CLI/UI → Project API → Orchestrator → Local Director
+                                      ↓
+                           Image / Video / TTS providers
+                                      ↓
+                                  QA / Validation
+                                      ↓
+                                FFmpeg Render
+                                      ↓
+                                  final.mp4
 ```
 
-The key boundary is:
-
-> **LLM decides and coordinates; deterministic application code validates, executes, stores, and renders.**
+Key boundary: **LLM decides and coordinates; deterministic application code validates, executes, stores, and renders.**
 
 ---
 
 # 5. Repository Development System
 
-This repository must be developed using the rules in:
-
-- `AGENTS.md` — AI-agent engineering policy.
-- `docs/AGENTS_AND_SKILLS.md` — agent roles and skill-selection rules.
-- `.agents/skills/` — focused reusable skills.
-- `CONTRIBUTING.md` — development workflow and coding standards.
-- `TESTING.md` — complete test strategy.
-- `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done.
-
-Agents must load the smallest applicable set of skills for each task. Core implementation changes normally require coding + testing. Provider changes also require provider-integration + performance. File/process changes require security. Major architecture changes require architecture/review. Every meaningful change must update the relevant documentation.
+The repository development contract is defined by `AGENTS.md`, `CONTRIBUTING.md`, `TESTING.md`, `.agents/skills/`, and `docs/DOCUMENTATION_STANDARD.md`. Documentation is part of Definition of Done. Generated media/model weights/cache remain excluded from Git.
 
 ---
 
-# 6. Agent Roles
+# 6. Core Components
 
-### Architect Agent
+## CLI
 
-Owns architecture boundaries, interfaces, data models, dependency direction, and major design decisions.
+Implemented commands include `doctor`, `health`, `create`, `resume`, `generate-scene`, `generate-audio`, `generate-video`, `generate-media`, `subtitles`, `timeline`, `qa`, `regenerate-scene`, and `render`.
 
-### Director/Prompt Agent
+Planned: cache statistics/cleanup, inspect, and broader end-to-end generation.
 
-Owns creative brief, script, storyboard, prompt templates, and structured generation instructions.
+## Orchestrator
 
-### Implementation Agent
+Executes stages, calls providers, validates outputs, stores artifacts, resumes partial work, routes scenes, and enforces resource policy.
 
-Implements focused features with tests and documentation.
+## Provider Registry
 
-### Provider Agent
-
-Integrates and validates local LLM/image/video/TTS/music backends behind adapters.
-
-### QA/Test Agent
-
-Builds unit, contract, integration, regression, and end-to-end tests.
-
-### Performance Agent
-
-Measures speed/memory/disk/concurrency on the target M4 and protects safe defaults.
-
-### Security Agent
-
-Reviews filesystem, subprocess, model-output, configuration, and dependency risks.
-
-### Documentation Agent
-
-Maintains architecture docs, setup/configuration docs, CLI/API docs, troubleshooting, examples, ADRs, migration notes, and phase status. Documentation is part of Definition of Done.
-
-### Reviewer Agent
-
-Performs final correctness, security, test, architecture, resource, and documentation review.
+Video capabilities are centralized in a deterministic registry. Broader provider/model construction and version/resource metadata remain planned.
 
 ---
 
-# 7. Core Components
+# 7. Canonical Data Model
 
-## 7.1 CLI
-
-Target commands:
-
-```bash
-video-agent doctor
-video-agent health
-video-agent create "topic" --duration 60
-video-agent inspect <project-id>
-video-agent plan <project-id>
-video-agent generate <project-id>
-video-agent generate-scene <project-id> <scene-id>
-video-agent render <project-id>
-video-agent resume <project-id>
-video-agent clean <project-id>
-video-agent cache stats
-video-agent cache clear
-```
-
-## 7.2 Project Manager
-
-State machine:
-
-```text
-CREATED
-BRIEF_READY
-SCRIPT_READY
-STORYBOARD_READY
-ASSETS_GENERATING
-ASSETS_READY
-AUDIO_READY
-READY_TO_RENDER
-RENDERING
-COMPLETED
-FAILED
-CANCELLED
-```
-
-## 7.3 Director
-
-Converts user intent into validated production instructions.
-
-Responsibilities:
-
-- requirements extraction
-- creative brief
-- script
-- storyboard
-- scene visual prompts
-- motion prompts
-- continuity metadata
-- preferred/fallback media strategy
-
-## 7.4 Orchestrator
-
-Responsibilities:
-
-- execute stages
-- call providers
-- validate outputs
-- store artifacts
-- retry only safe failures
-- resume partial projects
-- route scenes to providers
-- enforce resource policy
-
-## 7.5 Provider Registry
-
-Provider implementations are registered by capability and configuration rather than referenced directly by business logic.
+Typed Pydantic models are used at application boundaries for projects, scenes, artifacts, timelines, and provider requests/results.
 
 ---
 
-# 8. Canonical Data Model
-
-Use typed Pydantic models at application boundaries.
-
-## VideoProject
-
-```text
-schema_version
-id
-created_at
-updated_at
-source_prompt
-title
-language
-target_audience
-tone
-duration_seconds
-aspect_ratio
-resolution
-fps
-style
-quality_profile
-voice_profile
-music_profile
-scenes
-provider_plan
-status
-metadata
-```
-
-## Scene
-
-```text
-id
-index
-start_time
-duration
-narration
-visual_description
-image_prompt
-motion_prompt
-negative_prompt
-camera
-composition
-lighting
-style
-characters
-subjects
-reference_assets
-preferred_media_type
-fallback_media_type
-image_asset
-video_asset
-audio_asset
-subtitle_range
-validation
-status
-metadata
-```
-
-## Artifact
-
-```text
-id
-project_id
-scene_id
-artifact_type
-path
-mime_type
-provider
-model
-model_version
-sha256
-created_at
-parameters
-input_artifacts
-status
-```
-
-## GenerationRun
-
-```text
-run_id
-project_id
-scene_id
-stage
-provider
-model
-input
-parameters
-started_at
-completed_at
-status
-error
-output_artifacts
-```
-
----
-
-# 9. Directory Layout
+# 8. Directory Layout
 
 ```text
 local-ai-video/
@@ -369,37 +104,8 @@ local-ai-video/
 ├── README.md
 ├── pyproject.toml
 ├── uv.lock
-├── .env.example
-├── .gitignore
-├── Makefile
-│
-├── .agents/
-│   └── skills/
-│       ├── coding/SKILL.md
-│       ├── testing/SKILL.md
-│       ├── provider-integration/SKILL.md
-│       ├── security/SKILL.md
-│       ├── performance/SKILL.md
-│       ├── debugging/SKILL.md
-│       ├── review/SKILL.md
-│       └── documentation/SKILL.md
-│
+├── .agents/skills/
 ├── app/
-│   ├── __init__.py
-│   ├── cli.py
-│   ├── config.py
-│   ├── logging.py
-│   ├── exceptions.py
-│   ├── health.py
-│   ├── preflight.py
-│   ├── models/
-│   ├── director/
-│   ├── orchestrator/
-│   ├── providers/
-│   ├── render/
-│   ├── storage/
-│   └── api/
-│
 ├── prompts/
 ├── workflows/
 ├── docs/
@@ -412,293 +118,152 @@ local-ai-video/
     └── models/
 ```
 
-Generated media/model weights/cache must remain excluded from Git.
-
 ---
 
-# 10. Phase 0 — Foundation and Environment
-
-## Objective
-
-Create a clean control plane for the local pipeline.
-
-## Completed implementation
-
-- Python package foundation.
-- `uv` dependency configuration.
-- Ruff, Pytest, and mypy configuration.
-- Pydantic configuration models.
-- Typer CLI.
-- Structured correlation logging.
-- YAML configuration example/loading.
-- Domain-specific exceptions.
-- Filesystem project store with path containment checks.
-- Disk-capacity preflight.
-- Memory and disk resource snapshot.
-- Apple Silicon detection.
-- Python runtime detection.
-- FFmpeg detection.
-- Ollama local health/model detection.
-- `video-agent health`.
-- `video-agent doctor`.
-- Unit tests for configuration, health, Ollama adapter, and filesystem behavior.
-- Git ignore rules for generated media/model/cache artifacts.
-- Makefile quality commands.
-- GitHub Actions quality gates for formatting, lint, type checking, and tests.
-- Documentation standard and agent documentation requirements.
-
-## Phase 0 acceptance
-
-Local validation command:
-
-```bash
-make check
-make doctor
-```
-
-The repository-side foundation is complete. Final hardware acceptance must be executed on the user's M4 Mac because GitHub CI cannot validate the actual local Ollama/FFmpeg installation and Apple Silicon resource behavior.
+# 9. Phase 0 — Foundation and Environment
 
 **Status: CODE COMPLETE — LOCAL M4 ACCEPTANCE PENDING**
 
----
-
-# 11. Phase 1 — Local LLM Director
-
-## Objective
-
-Use the local LLM as the creative director while keeping all model output strictly validated.
-
-## Implemented
-
-- Local `LLMProvider` protocol.
-- Typed `LLMRequest` and `LLMResponse` structures.
-- Ollama `/api/chat` generation adapter.
-- Robust loopback-only endpoint validation with exact hostname allowlist.
-- Configured Ollama base URL, model, temperature, top-p and top-k propagation.
-- Structured response metadata capture.
-- Validated `CreativeBrief` Pydantic schema.
-- Versioned Director prompt files.
-- Director system prompt with local-only and non-executable-output constraints.
-- Director brief generation and JSON/Pydantic validation.
-- Bounded structured-output repair/retry with explicit retry budget.
-- `Script` generation and validation.
-- `Storyboard` generation and validation.
-- Scene timing/non-overlap validation.
-- Storyboard target-duration validation with tolerance.
-- Persist-first `VideoProject` creation.
-- Project status transitions through `BRIEF_READY`, `SCRIPT_READY`, and `STORYBOARD_READY`.
-- Atomic JSON persistence for project artifacts.
-- Safe artifact filename validation.
-- CLI wiring to configured local Ollama settings.
-- Unit and integration-style tests for retry exhaustion, path safety, storyboard timing, project failure persistence, and Ollama request boundaries.
-- Automatic Director resume from the first missing or invalid stage.
-- Persistent per-stage `GenerationRun` metadata.
-- Ollama installed-model preflight before generation.
-
-## Remaining
-
-- real M4 Ollama inference acceptance
-- richer canonical Scene schema from the full Phase 2 model
-- script duration/narration compatibility validation
-
-**Status: IN PROGRESS — CODED, TESTS ADDED, LOCAL M4 ACCEPTANCE PENDING**
+Implemented Python/uv foundation, configuration, CLI, structured logging, YAML configuration, domain exceptions, filesystem storage/path safety, disk and resource preflight, Apple Silicon/runtime/FFmpeg/Ollama health checks, Makefile quality commands, CI quality gates, tests, and documentation standards.
 
 ---
 
-# 12. Phase 2 — Script and Storyboard
+# 10. Phase 1 — Local LLM Director
 
-## Script
+**Status: CODE COMPLETE — LOCAL M4 ACCEPTANCE PENDING**
 
-Must respect duration, audience, language, tone, and structure.
+Implemented local Ollama provider, loopback-only endpoint enforcement, model preflight, validated creative brief/script/storyboard generation, bounded structured-output repair, prompt versioning, persistence, atomic artifacts, project status transitions, GenerationRun metadata, and Director resume behavior.
 
-## Storyboard
-
-Each scene must contain:
-
-- timing
-- narration
-- visual objective
-- image prompt
-- motion prompt
-- camera/framing
-- lighting
-- continuity references
-- preferred/fallback strategy
-
-## Validation
-
-- duration > 0
-- no negative scene duration
-- no overlapping intervals
-- scene total approximately equals project duration
-- narration compatible with scene duration
-- required prompts present
-
-Phase 1 has implemented the initial Script and Storyboard schemas and timing validation. The richer Phase 2 scene model remains to be completed.
+Remaining machine-level acceptance: real M4 Ollama inference and further schema/narration compatibility refinement.
 
 ---
 
-# 13. Phase 3 — Local Image Generation
+# 11. Phase 2 — Script and Storyboard
 
-Implement:
+**Status: IMPLEMENTED BASELINE**
 
-```python
-class ImageProvider(Protocol):
-    def generate(self, request: ImageGenerationRequest) -> ImageResult: ...
+Implemented scene timing/non-overlap and target-duration validation plus scene visual/motion/narration data used by downstream media generation. Further schema enrichment remains possible without weakening validation boundaries.
+
+---
+
+# 12. Phase 3 — Local Image Generation
+
+**Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
+
+Implemented `ImageProvider`, local Diffusers image generation, MPS/CPU selection, local-files-only model loading, deterministic generation parameters, output hashing, persistence, and per-scene generation.
+
+---
+
+# 13. Phase 4 — Local TTS
+
+**Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
+
+Implemented `TTSProvider`, macOS Speech `say`, per-scene synthesis, WAV metadata/duration capture, narration assembly, normalization, and persistence.
+
+---
+
+# 14. Phase 5 — Subtitles and Timeline
+
+**Status: IMPLEMENTED**
+
+Implemented deterministic SRT/WebVTT generation and canonical timeline building used by rendering and project QA.
+
+---
+
+# 15. Phase 6 — FFmpeg Rendering
+
+**Status: IMPLEMENTED — HARDWARE ACCEPTANCE PENDING**
+
+Implemented deterministic FFmpeg rendering, still-image/video scene handling, narration integration, silent fallback, H.264/AAC MP4 output, ffprobe validation, final artifact hashing, and render metadata.
+
+---
+
+# 16. Phase 7 — AI Image-to-Video / Text-to-Video
+
+**Status: IMPLEMENTED BASELINE — HARDWARE ACCEPTANCE PENDING**
+
+Implemented video provider contract, deterministic FFmpeg motion provider, local LTX image-to-video provider, capability metadata, scene-video persistence, deterministic cache keys, and scene-video QA before artifact acceptance.
+
+LTX model loading, memory use, latency, and visual quality remain target-M4 acceptance work.
+
+---
+
+# 17. Phase 8 — Scene-Level Media Strategy
+
+**Status: IMPLEMENTED BASELINE — HARDWARE ACCEPTANCE PENDING**
+
+Implemented deterministic scene media selection, centralized video capability registry, host resource snapshots, memory-aware routing, image-to-video selection, deterministic motion fallback, project-level media orchestration, asset lifecycle transitions, deterministic scene-video cache keys, validated cache reuse, scene-video FFprobe/decode QA, and `generate-media` CLI integration.
+
+The LLM does not execute routing decisions directly; application code enforces capabilities, duration limits, memory policy, and fallback rules.
+
+Remaining hardening: provider construction centralization, stronger fallback guarantees, explicit cache statistics/cleanup, and broader lifecycle/resume hardening.
+
+---
+
+# 18. Phase 9 — Quality Assurance
+
+**Status: IMPLEMENTED — DETERMINISTIC QA COMPLETE**
+
+Phase 9 provides deterministic QA across media, scenes, timelines, subtitles, and final video.
+
+### Image QA
+
+- existence/non-empty validation
+- PNG signature/IHDR validation
+- positive dimensions
+- optional expected dimensions
+- SHA-256 measurement
+
+### Audio QA
+
+- existence/non-empty validation
+- bounded FFprobe invocation
+- valid JSON and audio stream validation
+- positive duration
+- expected-duration tolerance validation
+
+### Video QA
+
+- existence/non-empty validation
+- FFprobe metadata validation
+- video stream validation
+- duration validation
+- resolution/FPS validation
+- complete FFmpeg decode validation
+
+### Project QA
+
+- project/scene/artifact manifest validation
+- scene/artifact UUID consistency
+- per-scene image/audio/video validation
+- timeline project/duration/continuity validation
+- scene coverage validation
+- subtitle file validation
+- final-video validation when output exists
+
+### Reporting and targeted regeneration
+
+```bash
+video-agent qa <PROJECT_ID>
+video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage image
+video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage audio
+video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage video
+video-agent regenerate-scene <PROJECT_ID> <SCENE_ID> --stage all
 ```
 
-Persist prompt, negative prompt, seed, model, provider, parameters, and output hash.
+QA reports persist as `qa-report.json` with schema version, pass/fail state, exact failure scope, and actionable message. Targeted regeneration invalidates affected downstream media/cache state and re-runs QA.
 
-Start with a practical local backend on Apple Silicon. Keep the interface compatible with ComfyUI or another local runtime as needed.
+### Phase 9 acceptance
 
-Acceptance: every scene can independently generate and validate an image asset.
-
----
-
-# 14. Phase 4 — Local TTS
-
-Implement:
-
-```python
-class TTSProvider(Protocol):
-    def synthesize(self, request: TTSRequest) -> AudioResult: ...
-```
-
-Tasks:
-
-- local voice registry
-- per-scene synthesis
-- duration measurement
-- sample-rate normalization
-- volume/loudness normalization
-- concatenation
-- metadata persistence
-
-Acceptance: complete local narration track plus timing data.
+Deterministic QA and targeted regeneration are implemented. CI validates deterministic behavior. Real model performance and visual-quality acceptance remain dependent on the target M4 environment.
 
 ---
 
-# 15. Phase 5 — Subtitles and Timeline
+# 19. Phase 10 — Agentic Recovery and Refinement
 
-Build a deterministic timeline data structure containing scenes, media assets, durations, audio, subtitle ranges, transitions, motion effects, and output settings.
+Next major phase. Recovery remains bounded and deterministic around model calls.
 
-Generate SRT and optionally WebVTT.
-
-Do not embed hard-coded one-off FFmpeg commands throughout business logic.
-
----
-
-# 16. Phase 6 — FFmpeg Rendering
-
-Initial output:
-
-- MP4
-- H.264 video
-- standard audio codec
-- configurable FPS/resolution
-
-Post-render validation:
-
-- file exists
-- file decodes
-- video stream exists
-- audio stream exists when expected
-- duration within tolerance
-- resolution/FPS correct
-
-Acceptance: 30–60 second still-image + narration projects render end-to-end locally.
-
----
-
-# 17. Phase 7 — AI Image-to-Video / Text-to-Video
-
-Start with image-to-video because storyboard images already anchor composition and continuity.
-
-Implement:
-
-```python
-class VideoProvider(Protocol):
-    def generate(self, request: VideoGenerationRequest) -> VideoResult: ...
-```
-
-Tasks:
-
-- evaluate Apple-Silicon-compatible local runtimes/models
-- start with short clips
-- capability metadata
-- image-to-video provider
-- clip validation
-- static-motion fallback
-- caching
-
-Acceptance: one project can mix generated video clips, animated stills, and narration into one final MP4.
-
----
-
-# 18. Phase 8 — Scene-Level Media Strategy
-
-Each scene supports:
-
-```text
-STATIC_IMAGE
-IMAGE_MOTION
-IMAGE_TO_VIDEO
-TEXT_TO_VIDEO
-```
-
-Selection considers:
-
-- scene importance
-- requested duration
-- quality profile
-- provider capability
-- available memory
-- generation time
-- continuity
-
-Use deterministic rules first. LLM-assisted routing can come later within strict policy bounds.
-
----
-
-# 19. Phase 9 — Quality Assurance
-
-### Image
-
-- integrity
-- dimensions
-- aspect ratio
-- blank/invalid output detection where practical
-
-### Video
-
-- decode
-- duration
-- resolution
-- stream validation
-
-### Audio
-
-- decode
-- duration
-- loudness/silence checks where practical
-
-### Project
-
-- all required assets exist
-- timeline valid
-- subtitle timing valid
-- final duration valid
-
-The pipeline must identify the exact failed artifact/scene and make targeted regeneration possible.
-
----
-
-# 20. Phase 10 — Agentic Recovery and Refinement
-
-Bounded autonomy only.
-
-Example retry budgets:
-
+Initial budgets:
 ```text
 LLM structured-output repairs: 2
 image generation retries: 2
@@ -706,502 +271,76 @@ video generation retries: 2
 render retries: 1
 ```
 
-Examples:
-
-- narration too long → rewrite narration → re-run TTS
-- image provider fails → simplify prompt → retry → fallback
-- video memory risk → reduce resolution/clip length → fallback to image motion
-
-No infinite loops.
+Recovery examples include bounded narration rewrite → TTS → QA, image retry/prompt simplification → deterministic fallback, and video resource reduction → fallback. No infinite loops or autonomous policy changes.
 
 ---
 
-# 21. Phase 11 — Web API and UI
+# 20. Phase 11 — Web API and UI
 
-FastAPI target endpoints:
-
-```text
-POST /projects
-GET /projects/{id}
-POST /projects/{id}/plan
-POST /projects/{id}/generate
-POST /projects/{id}/scenes/{scene}/generate
-POST /projects/{id}/render
-POST /projects/{id}/resume
-GET /projects/{id}/artifacts
-GET /projects/{id}/events
-GET /health
-GET /providers
-```
-
-Local UI should initially expose:
-
-- prompt
-- duration
-- aspect ratio
-- style
-- language
-- voice
-- quality
-- scene preview
-- regenerate scene
-- render
-- final video preview
+FastAPI target endpoints cover projects, planning, generation, scene generation, rendering, resume, artifacts, events, health, and providers. The local UI should expose prompt, duration, aspect ratio, style, language, voice, quality, scene preview, regeneration, rendering, and final-video preview.
 
 ---
 
-# 22. Phase 12 — Persistence and Resume
+# 21. Phase 12 — Persistence and Resume
 
-Start with filesystem + JSON manifests. Introduce SQLite only when project/job count requires indexed querying.
-
-On restart:
-
-1. Load manifest.
-2. Validate existing artifacts.
-3. Verify hashes where enabled.
-4. Mark missing/corrupt outputs incomplete.
-5. Resume from first incomplete stage.
-
-Phase 1 now includes automatic Director-stage resume and persisted GenerationRun records. Full artifact/hash verification and cross-stage recovery remain future work.
+Filesystem + JSON remains current persistence. Full cross-stage artifact/hash verification and recovery orchestration remain planned beyond Director resume and Phase 9 targeted regeneration.
 
 ---
 
-# 23. Phase 13 — Caching
+# 22. Phase 13 — Caching
 
-Cache key includes:
-
-```text
-provider
-model
-model_version
-normalized_prompt
-negative_prompt
-parameters
-seed
-input_artifact_hashes
-```
-
-Changed generation settings must invalidate old cache entries.
+Deterministic scene-video generation keys are implemented. Planned: explicit project cache statistics, cleanup, lifecycle rules, and broader retention/invalidation management.
 
 ---
 
-# 24. Phase 14 — Provider/Model Registry
+# 23. Phase 14 — Provider/Model Registry
 
-Provider records should include capability and resource metadata.
-
-Example:
-
-```text
-provider: local-video
-image_to_video: true
-text_to_video: false
-max_duration: 5
-preferred_resolution: ...
-memory_class: high
-```
-
-This metadata is consumed by deterministic routing logic.
+Centralized video capability metadata is implemented. Planned: broader provider/model registration, construction, version metadata, and resource profiles.
 
 ---
 
-# 25. Phase 15 — Evaluation Framework
+# 24. Phase 15 — Evaluation Framework
 
-Maintain fixed benchmark prompts for:
-
-- educational explainer
-- product advertisement
-- cinematic scene
-- social short
-- technical tutorial
-- storytelling
-- character continuity
-
-Track:
-
-- planning validity
-- generation success rate
-- render success rate
-- generation latency
-- memory failures
-- regeneration rate
-- cache hit rate
-- duration accuracy
-
-Human evaluation can later rate visual relevance, prompt adherence, narrative quality, audio quality, and temporal consistency.
+Maintain fixed benchmark prompts and track planning validity, generation success rate, render success rate, latency, memory failures, regeneration rate, cache hit rate, duration accuracy, and later human-rated visual/narrative/audio/temporal quality.
 
 ---
 
-# 26. Phase 16 — Security and Safety
+# 25. Phase 16 — Security and Safety
 
-Apply repository security skill to any filesystem/process/provider change.
-
-Required:
-
-- no shell interpolation
-- path traversal prevention
-- bounded subprocesses
-- sanitized filenames
-- secret-safe logging
-- media validation
-- dependency/license awareness
-- no arbitrary code execution from LLM output
+Required controls remain: no shell interpolation, path traversal prevention, bounded subprocesses, sanitized filenames, secret-safe logging, media validation, dependency/license awareness, and no arbitrary code execution from LLM output.
 
 ---
 
-# 27. Phase 17 — Testing and CI
+# 26. Phase 17 — Testing and CI
 
-## CI must run
-
-1. Formatting check
-2. Lint
-3. Type checks where configured
-4. Unit tests
-5. Contract tests
-6. Lightweight integration tests
-
-## Separate hardware suite
-
-Actual model/runtime tests may be marked:
-
-```text
-hardware
-models
-slow
-```
-
-and executed on the actual Apple Silicon environment.
-
-## Minimum critical test matrix
-
-- valid/invalid project schema
-- scene timing
-- invalid LLM JSON
-- prompt validation
-- provider failure
-- retry limits
-- cache invalidation
-- corrupt media
-- render plan
-- FFmpeg failure
-- duration validation
-- path traversal
-- subprocess timeout
-- resume behavior
-
-Current Phase 1 tests cover retry limits, storyboard duration/timing, project failure persistence, filesystem filename safety, Ollama request validation, model preflight, and Director resume behavior. The remaining hardware and end-to-end suites stay pending.
+CI runs formatting, lint, type checking, unit tests, contract tests, and lightweight integration tests. Hardware/model/slow suites belong on the actual Apple Silicon environment.
 
 ---
 
-# 28. Phase 18 — Observability
+# 27. Phase 18 — Observability
 
-Each operation gets a correlation context:
-
-```text
-project_id
-run_id
-scene_id
-stage
-provider
-model
-```
-
-Logs should allow an engineer to determine what failed, where, with which provider/model, how long it took, and which artifact was produced.
-
-Do not log secrets or unnecessary sensitive content.
+Each operation should expose correlation context: project_id, run_id, scene_id, stage, provider, and model. Logs must identify failures, duration, provider/model, and artifacts without leaking secrets.
 
 ---
 
-# 29. Phase 19 — Performance Engineering
+# 28. Phase 19 — Performance Engineering
 
-Measure before optimization.
-
-Baseline:
-
-- LLM latency
-- image generation latency
-- video generation latency
-- TTS latency
-- FFmpeg render latency
-- peak memory where measurable
-- output size
-
-Protect the M4/36 GB target with preflight checks and conservative media concurrency.
+Measure LLM, image, video, TTS, and FFmpeg latency; memory; disk; output size; and concurrency on the M4 target. Protect the 36 GB unified-memory target with conservative defaults and resource-aware routing.
 
 ---
 
-# 30. Definition of V1
+# 29. Definition of V1
 
-This command must work:
-
-```bash
-video-agent create "Create a 60-second educational video explaining AI agents" \
-  --duration 60 \
-  --style cinematic
-```
-
-Expected output:
-
-```text
-data/projects/<project-id>/
-├── project.json
-├── brief.json
-├── script.json
-├── storyboard.json
-├── scenes/
-│   ├── scene-01/
-│   │   ├── scene.json
-│   │   ├── image.png
-│   │   └── generation.json
-│   └── ...
-├── audio/
-│   ├── scene-01.wav
-│   └── narration.wav
-├── subtitles/
-│   └── subtitles.srt
-├── render/
-│   ├── render-plan.json
-│   └── final.mp4
-└── manifest.json
-```
-
-V1 must:
-
-- run locally
-- not require paid cloud inference
-- regenerate one scene
-- resume failed work
-- validate final MP4
-- persist generation metadata
+V1 requires a complete local project workflow, scene regeneration, resume, final MP4 validation, and persisted generation metadata without paid cloud inference.
 
 ---
 
-# 31. Definition of V2 — AI Motion
+# 30. Definition of V2 — AI Motion
 
-Adds:
-
-- local image-to-video provider
-- scene-level media strategy
-- video quality checks
-- static fallback
-- capability registry
-- caching
+V2 adds local image-to-video, scene-level media strategy, video QA, static fallback, capability registry, and caching. The repository now contains the baseline implementation for these capabilities.
 
 ---
 
-# 32. Definition of V3 — Video Agent
+# 31. Definition of V3 — Video Agent
 
-Adds:
-
-- automatic provider routing
-- quality evaluation
-- bounded repair loops
-- prompt refinement
-- narration correction
-- local web UI
-- project history
-
----
-
-# 33. Engineering Best Practices
-
-1. Keep provider integrations isolated.
-2. Keep business logic independent of concrete model names.
-3. Persist expensive generation metadata.
-4. Validate model/provider output at every boundary.
-5. Prefer deterministic logic over unnecessary LLM calls.
-6. Keep retries bounded.
-7. Make every stage independently rerunnable.
-8. Do not commit generated binaries.
-9. Do not commit secrets.
-10. Avoid unrelated refactors.
-11. Use regression tests for deterministic bugs.
-12. Measure on actual target hardware before optimizing.
-13. Document architecture-impacting decisions.
-14. Treat prompt files as versioned source code.
-15. Keep schemas versioned and migrate old projects explicitly.
-16. Use typed/domain-specific errors.
-17. Fail clearly rather than silently falling back.
-18. Prefer one complete vertical slice over many incomplete abstractions.
-19. Documentation updates are part of the same change as the feature they describe.
-
----
-
-# 34. First Vertical Slice
-
-The first implementation target is intentionally narrow:
-
-```text
-user prompt
-  ↓
-Ollama
-  ↓
-validated project
-  ↓
-validated storyboard
-  ↓
-3 deterministic test images
-  ↓
-local TTS
-  ↓
-subtitles
-  ↓
-FFmpeg
-  ↓
-final.mp4
-```
-
-Only after this works reliably should advanced image/video generation be introduced.
-
----
-
-# 35. Exact Initial Implementation Sequence
-
-1. Python project foundation
-2. `uv` environment
-3. config loader
-4. structured logging
-5. health/doctor
-6. Pydantic project model
-7. Pydantic scene model
-8. artifact model
-9. filesystem project store
-10. Ollama adapter
-11. Director prompt
-12. brief generation
-13. script generation
-14. storyboard generation
-15. storyboard validation
-16. image provider interface
-17. first local image backend
-18. image asset validation
-19. TTS provider interface
-20. first local TTS backend
-21. subtitle generation
-22. timeline builder
-23. FFmpeg render plan
-24. FFmpeg renderer
-25. final video validation
-26. end-to-end CLI
-27. resume support
-28. per-scene regeneration
-29. cache
-30. video provider interface
-31. local image-to-video backend
-32. scene-level routing
-33. quality evaluator
-34. bounded repair engine
-35. FastAPI
-36. local UI
-37. SQLite/job history if justified
-38. benchmark suite
-39. hardware performance tuning
-
----
-
-# 36. First Coding Session Checklist
-
-Implemented during Phase 0:
-
-- [x] `pyproject.toml`
-- [x] package structure
-- [x] config loader
-- [x] logging
-- [x] `video-agent health`
-- [x] `video-agent doctor`
-- [x] initial Pydantic project model
-- [x] filesystem store
-- [x] Ollama health check
-- [x] FFmpeg health check
-- [x] memory/disk preflight
-- [x] unit tests
-- [x] CI quality gates
-- [x] documentation standard
-
-Phase 1 progress:
-
-- [x] LLM provider contract
-- [x] Ollama chat generation adapter
-- [x] robust localhost-only provider enforcement
-- [x] configured Ollama model/runtime settings
-- [x] CreativeBrief schema
-- [x] Director brief generation
-- [x] bounded JSON repair/retry
-- [x] script generation
-- [x] storyboard generation
-- [x] storyboard timing/duration validation
-- [x] persisted project state transitions
-- [x] atomic JSON artifact persistence
-- [x] versioned Director prompts
-- [x] boundary and failure-path tests
-- [x] automatic Director resume discovery
-- [x] persisted GenerationRun metadata
-- [x] Ollama installed-model preflight
-- [ ] real M4 inference acceptance
-
----
-
-# 37. Non-Goals for Early Development
-
-Do not initially build:
-
-- multi-user SaaS authentication
-- Kubernetes/distributed inference
-- GPU cluster orchestration
-- custom model training
-- custom codecs
-- complex microservices
-- cloud-only core path
-- unrestricted autonomous agents
-
----
-
-# 38. Project Success Criteria
-
-Success means a user can remain on the M4 Mac, enter a natural-language video request, and receive a reproducible MP4 without manually assembling scripts, images, audio, subtitles, and editing steps.
-
-An engineer must be able to inspect every intermediate artifact, replace one provider/model, rerun a single scene, resume an interrupted project, and reproduce a final render from a saved manifest.
-
----
-
-# 39. Implementation Log
-
-The plan is updated as implementation progresses. Each meaningful implementation commit must update this section and the relevant phase status. Where GitHub's file-content API requires separate commits for individual files, the next plan synchronization commit records all intervening changes.
-
-### Phase 0 implementation log
-
-- Added Python project/dependency/tooling foundation.
-- Added local-only configuration and YAML example.
-- Added structured logging and domain exceptions.
-- Added filesystem project storage and disk preflight.
-- Added memory/disk resource snapshot.
-- Added Ollama local health/model detection.
-- Added health/doctor CLI checks.
-- Added tests and GitHub Actions quality gates.
-- Added documentation Definition of Done and strengthened AI-agent operating rules.
-
-**Status:** CODE COMPLETE — LOCAL M4 ACCEPTANCE PENDING.
-
-### Phase 1 implementation log
-
-- Added typed local LLM provider contract.
-- Implemented Ollama `/api/chat` generation.
-- Enforced exact loopback endpoint validation and rejected credentials/non-loopback hosts.
-- Wired configured Ollama base URL/model/sampling parameters into the Director CLI pipeline.
-- Added validated CreativeBrief schema and versioned Director prompt files.
-- Added bounded JSON repair/retry with explicit retry limits.
-- Added Script and Storyboard generation with timing and target-duration validation.
-- Changed project planning to persist the project before expensive Director stages and record stage status after each successful artifact.
-- Added atomic JSON artifact writes and simple-filename path safety.
-- Added tests for retry exhaustion, storyboard timing, project failure persistence, filesystem safety, and Ollama request/response boundaries.
-- Added automatic Director resume from the first missing or invalid stage.
-- Added persistent per-stage GenerationRun metadata for observability and recovery.
-- Added Ollama installed-model preflight so configured models fail clearly before expensive generation.
-- Added regression coverage for model-list parsing and missing-model failures.
-
-**Status:** CODE COMPLETE FOR CURRENT DIRECTOR SLICE — LOCAL M4 ACCEPTANCE PENDING.
-
-### Latest implementation synchronization
-
-The latest implementation work adds automatic resume, GenerationRun persistence, and Ollama installed-model preflight. The repository is now ready for real M4 acceptance of the Director path.
-
-**Next:** on the M4 Mac run `make check`, `make doctor`, verify the configured Ollama model is installed, and perform one real `video-agent create` run. Then begin the richer Phase 2 Scene schema and local image-provider vertical slice.
+V3 adds automatic provider routing, quality evaluation, bounded repair loops, prompt refinement, narration correction, and local web UI. These map primarily to Phases 9–11 and later evaluation work.
