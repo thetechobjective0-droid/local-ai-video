@@ -28,7 +28,13 @@ tts:
 video:
   provider: ffmpeg_ken_burns
   device: mps
+  dtype: float16
+  width: 704
+  height: 384
   fps: 16
+  # For real local AI I2V, use a downloaded LTX-Video checkpoint:
+  # provider: ltx_video
+  # model_path: ./data/models/LTX-Video
 
 storage:
   root: ./data
