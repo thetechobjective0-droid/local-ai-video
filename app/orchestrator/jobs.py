@@ -96,7 +96,7 @@ class MediaJobManager:
 
     def list(self, project_id: UUID | None = None) -> List[MediaJob]:
         jobs_dir = self.store.root / "jobs"
-        result: list[MediaJob] = []
+        result: List[MediaJob] = []
         for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
             try:
                 job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
@@ -123,8 +123,8 @@ class MediaJobManager:
             self._futures[job.id] = future
         return job
 
-    def _load_scenes(self, project_id: UUID) -> list[Scene]:
-        scenes: list[Scene] = []
+    def _load_scenes(self, project_id: UUID) -> List[Scene]:
+        scenes: List[Scene] = []
         for path in sorted(self.store.project_dir(project_id).glob("scene-*.json")):
             if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
                 continue
