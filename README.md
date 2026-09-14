@@ -4,9 +4,9 @@ A local-only AI video production pipeline designed for Apple Silicon, initially 
 
 ## Current status
 
-**Phase 3 — Local image generation implemented; M4 model acceptance pending.**
+**Phase 6 — FFmpeg rendering implemented; final MP4 rendering and post-render validation are now wired through the CLI.**
 
-The project now includes the local Director pipeline, richer scene metadata, deterministic timing validation, a provider-agnostic image-generation contract, and a local Diffusers text-to-image backend designed for Apple Silicon MPS.
+The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, and an isolated FFmpeg renderer for producing H.264/AAC MP4 output.
 
 ## Local-only architecture
 
@@ -54,6 +54,13 @@ uv run video-agent health
 uv run video-agent doctor
 ```
 
+Generate a deterministic timeline and render it:
+
+```bash
+uv run video-agent timeline <PROJECT_ID>
+uv run video-agent render <PROJECT_ID>
+```
+
 Run tests:
 
 ```bash
@@ -68,16 +75,11 @@ uv run ruff format --check .
 uv run mypy app
 ```
 
-## Image generation API
+## Rendering boundary
 
-The application boundary is provider-agnostic:
+Phase 6 keeps FFmpeg-specific subprocess construction inside `app/render/ffmpeg.py`. The renderer consumes the persisted `timeline.json`, resolves local artifact metadata, renders the scene sequence, validates the resulting MP4 with `ffprobe`, and persists `final-video.json` plus `render.json`.
 
-```python
-class ImageProvider(Protocol):
-    def generate(self, request: ImageGenerationRequest) -> ImageResult: ...
-```
-
-A scene can be generated independently through the deterministic image service. The service persists the PNG, artifact metadata, generation parameters, SHA-256 output hash, and updated scene reference.
+The initial renderer requires contiguous scene timing and supports local still-image/video media plus per-scene narration. More advanced transitions and AI-generated video clips are later phases.
 
 ## Documentation
 
@@ -86,6 +88,7 @@ Read these before contributing:
 - `plan.md` — implementation roadmap and architecture
 - `AGENTS.md` — AI agent operating contract
 - `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done
+- `docs/phase-6-status.md` — current FFmpeg implementation status
 - `.agents/skills/` — task-specific engineering playbooks
 - `CONTRIBUTING.md` — contribution workflow
 - `TESTING.md` — testing strategy
