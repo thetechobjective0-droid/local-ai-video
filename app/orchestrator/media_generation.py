@@ -10,6 +10,7 @@ from app.generation.video import generate_scene_video
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus
 from app.models.scene import MediaType, Scene
+from app.orchestrator.fallback import resolve_video_fallback
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
 from app.preflight import ResourceSnapshot, memory_gib, snapshot
 from app.providers.capabilities import get_provider_capabilities
@@ -33,6 +34,17 @@ def _provider_capability(provider: VideoProvider) -> VideoCapability:
     if not isinstance(provider_name, str):
         raise VideoAgentError("video provider does not expose a registered provider_name")
     return get_provider_capabilities(provider_name).video
+
+
+def _provider_identity(provider: VideoProvider) -> tuple[str, str]:
+    """Return stable provider/model identifiers for audit metadata."""
+    name = getattr(provider, "provider_name", None)
+    model = getattr(provider, "model_name", getattr(provider, "_model_name", "unknown"))
+    if not isinstance(name, str) or not name:
+        raise VideoAgentError("video provider does not expose a provider_name")
+    if not isinstance(model, str) or not model:
+        model = "unknown"
+    return name, model
 
 
 def _resolve_resources(store: FilesystemStore, resource_snapshot: ResourceSnapshot | None) -> ResourceSnapshot:
@@ -62,7 +74,7 @@ def generate_project_media(
     height: int = 384,
     fps: int = 16,
 ) -> list[SceneMediaResult]:
-    """Generate project media with bounded image/video recovery."""
+    """Generate project media with bounded recovery and deterministic fallback."""
     if not scenes:
         raise VideoAgentError("cannot generate project media without scenes")
 
@@ -88,14 +100,11 @@ def generate_project_media(
                         }
                     }
                 )
-                store.write_json(
-                    store.project_dir(project_id),
-                    f"scene-{current.index:04d}.json",
-                    current.model_dump(mode="json"),
-                )
+                store.write_json(store.project_dir(project_id), f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
 
             selected = select_media_type(current, video=capability, available_memory_gb=effective_memory_gb)
             used_fallback = False
+            fallback_metadata: dict[str, object] | None = None
 
             if selected is MediaType.IMAGE_TO_VIDEO:
                 try:
@@ -109,18 +118,38 @@ def generate_project_media(
                                 "video_recovery": {
                                     "attempts": video_result.attempts,
                                     "strategies": list(video_result.strategies),
+                                    "fallback_used": False,
                                 },
                             }
                         }
                     )
-                except (VideoAgentError, ValueError):
-                    if fallback_provider is None:
+                except VideoAgentError as primary_error:
+                    decision = resolve_video_fallback(
+                        video_provider,
+                        fallback_provider,
+                        reason=f"primary provider failed after {3} bounded attempts: {primary_error}",
+                    )
+                    if decision is None:
                         raise
+                    fallback_name, fallback_model = _provider_identity(decision.provider)
                     _, current = generate_scene_video(
-                        fallback_provider, store, project_id, current, width=width, height=height, fps=fps
+                        decision.provider,
+                        store,
+                        project_id,
+                        current,
+                        width=width,
+                        height=height,
+                        fps=fps,
                     )
                     selected = MediaType.IMAGE_MOTION
                     used_fallback = True
+                    fallback_metadata = {
+                        "fallback_used": True,
+                        "primary_provider": decision.primary_provider,
+                        "fallback_provider": fallback_name,
+                        "fallback_model": fallback_model,
+                        "reason": decision.reason,
+                    }
             elif selected is MediaType.IMAGE_MOTION:
                 motion_provider = fallback_provider if fallback_provider is not None else video_provider
                 video_result = generate_scene_video_with_recovery(
@@ -133,6 +162,7 @@ def generate_project_media(
                             "video_recovery": {
                                 "attempts": video_result.attempts,
                                 "strategies": list(video_result.strategies),
+                                "fallback_used": motion_provider is not video_provider,
                             },
                         }
                     }
@@ -142,26 +172,21 @@ def generate_project_media(
             elif current.image_asset is None:
                 raise VideoAgentError(f"scene {current.index} has no image asset for static media")
 
-            current = current.model_copy(
-                update={
-                    "metadata": {
-                        **current.metadata,
-                        "selected_media_type": selected.value,
-                        "media_fallback_used": used_fallback,
-                        "resource_snapshot": {
-                            "total_memory_bytes": resources.total_memory_bytes,
-                            "available_memory_bytes": resources.available_memory_bytes,
-                            "free_disk_bytes": resources.free_disk_bytes,
-                        },
-                        "routing_memory_gib": effective_memory_gb,
-                    }
-                }
-            )
-            store.write_json(
-                store.project_dir(project_id),
-                f"scene-{current.index:04d}.json",
-                current.model_dump(mode="json"),
-            )
+            metadata = {
+                **current.metadata,
+                "selected_media_type": selected.value,
+                "media_fallback_used": used_fallback,
+                "resource_snapshot": {
+                    "total_memory_bytes": resources.total_memory_bytes,
+                    "available_memory_bytes": resources.available_memory_bytes,
+                    "free_disk_bytes": resources.free_disk_bytes,
+                },
+                "routing_memory_gib": effective_memory_gb,
+            }
+            if fallback_metadata is not None:
+                metadata["media_fallback"] = fallback_metadata
+            current = current.model_copy(update={"metadata": metadata})
+            store.write_json(store.project_dir(project_id), f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
             results.append(SceneMediaResult(current, selected, used_fallback))
     except Exception:
         _set_project_status(store, project_id, ProjectStatus.FAILED)
