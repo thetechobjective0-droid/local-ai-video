@@ -7,7 +7,7 @@ from typing import Any
 from uuid import UUID
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -163,7 +163,7 @@ def qa(project_id: UUID) -> dict[str, Any]:
     try:
         report = validate_project(store, project_id)
     except (OSError, ValueError):
-        raise HTTPException(status_code=404, detail="project not found") from None
+        raise HTTPException(status_code=404, detail="project not found")
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
     return asdict(report)
 
@@ -302,6 +302,17 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
         "strategies": strategies,
         "qa_passed": report.passed,
     }
+
+
+@app.head("/api/projects/{project_id}/video")
+def final_video_head(project_id: UUID) -> Response:
+    path = _store().project_dir(project_id) / "final.mp4"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="final video not found")
+    return Response(
+        status_code=200,
+        headers={"content-type": "video/mp4", "content-length": str(path.stat().st_size)},
+    )
 
 
 @app.get("/api/projects/{project_id}/video")
