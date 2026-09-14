@@ -1,7 +1,9 @@
 """Safe filesystem-backed project storage."""
 
+import json
 from pathlib import Path
 import shutil
+from typing import Any
 from uuid import UUID
 
 from app.exceptions import InsufficientDiskError
@@ -41,6 +43,14 @@ class FilesystemStore:
             project.model_dump_json(indent=2), encoding="utf-8"
         )
         return directory
+
+    def write_json(self, directory: Path, filename: str, value: Any) -> Path:
+        """Persist a JSON artifact under an existing project directory."""
+        target = (directory / filename).resolve()
+        if directory.resolve() not in target.parents:
+            raise ValueError("artifact path escapes project directory")
+        target.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
+        return target
 
     def load_project(self, project_id: UUID | str) -> VideoProject:
         """Load and validate project metadata from disk."""
