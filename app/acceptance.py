@@ -15,7 +15,7 @@ from app.generation.images import generate_scene_image
 from app.generation.video import generate_scene_video
 from app.models.scene import Scene
 from app.models.timeline import Timeline
-from app.preflight import memory_gib, snapshot
+from app.preflight import snapshot
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_provider
 from app.qa.project import validate_project
@@ -85,9 +85,7 @@ def _mps_readiness(device: str) -> tuple[bool, str]:
         return False, "PyTorch is not installed; install the image optional dependencies"
     available = bool(torch.backends.mps.is_available())
     detail = f"torch={torch.__version__}; mps_available={available}"
-    if available:
-        return True, detail
-    return False, detail
+    return available, detail
 
 
 def _scene(store: FilesystemStore, project_id: UUID) -> Scene:
@@ -151,8 +149,7 @@ def run_acceptance(
             )
             load_start = monotonic()
             image_provider._load_pipeline()
-            load_seconds = monotonic() - load_start
-            add("image_model_load", True, f"loaded {config.image.model_path}", load_seconds)
+            add("image_model_load", True, f"loaded {config.image.model_path}", monotonic() - load_start)
             image_result, scene = generate_scene_image(
                 image_provider,
                 store,
@@ -164,12 +161,11 @@ def run_acceptance(
                 steps=config.image.steps,
                 guidance_scale=config.image.guidance_scale,
             )
-            generation_seconds = monotonic() - start
             add(
                 "image_generation",
                 image_result.path.is_file() and image_result.path.stat().st_size > 0,
                 f"{image_result.path.name}; {image_result.width}x{image_result.height}",
-                generation_seconds,
+                monotonic() - start,
             )
 
             video_provider = build_video_provider(config)
@@ -177,12 +173,7 @@ def run_acceptance(
             load = getattr(video_provider, "_load_pipeline", None)
             if callable(load):
                 load()
-                add(
-                    "video_model_load",
-                    True,
-                    "local video model loaded",
-                    monotonic() - video_load_start,
-                )
+                add("video_model_load", True, "local video model loaded", monotonic() - video_load_start)
             else:
                 add("video_model_load", True, "deterministic provider has no model-load stage")
             video_start = monotonic()
@@ -203,26 +194,13 @@ def run_acceptance(
             )
 
             report = validate_project(store, project_id)
-            add(
-                "project_qa",
-                report.passed,
-                "QA PASS" if report.passed else "; ".join(f.message for f in report.failures),
-            )
+            add("project_qa", report.passed, "QA PASS" if report.passed else "; ".join(f.message for f in report.failures))
             timeline = _timeline(store, project_id)
             render_start = monotonic()
             artifact = FFmpegRenderer().render(store, project_id, timeline)
-            add(
-                "final_render",
-                artifact.path.is_file() and artifact.path.stat().st_size > 0,
-                str(artifact.path),
-                monotonic() - render_start,
-            )
+            add("final_render", artifact.path.is_file() and artifact.path.stat().st_size > 0, str(artifact.path), monotonic() - render_start)
             final_qa = validate_project(store, project_id)
-            add(
-                "final_qa",
-                final_qa.passed,
-                "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures),
-            )
+            add("final_qa", final_qa.passed, "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures))
         except Exception as exc:
             add("media_pipeline", False, f"{type(exc).__name__}: {exc}")
 
@@ -238,7 +216,7 @@ def run_acceptance(
 
 
 def write_report(report: AcceptanceReport, path: Path) -> Path:
-    """Persist an acceptance report atomically as JSON."""
+    """Persist an acceptance report as JSON."""
     path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
