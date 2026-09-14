@@ -102,7 +102,7 @@ def build_script(
         "[llm] script JSON validated; validating duration against %ss", brief.duration_seconds
     )
     validate_script_duration(script, brief.duration_seconds)
-    logger.info("[llm] script validated duration_estimate=%ss", script.duration_estimate_seconds)
+    logger.info("[llm] script validated duration_estimate=%ss", script.estimated_duration_seconds)
     return script
 
 
