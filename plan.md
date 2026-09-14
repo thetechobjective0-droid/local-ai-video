@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-Phase 0–9 deterministic implementation is complete. **Phase 10 — Agentic Recovery and Refinement is in progress**, with bounded recovery foundation, project-level image/video recovery, targeted scene regeneration recovery, centralized video-provider construction, timing-safe video recovery refinement, deterministic narration duration correction, deterministic provider fallback policy, and bounded final-render recovery implemented. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level activity.
+**Phases 0–10 repository implementation are complete.** Phases 5–10 status documents have been synchronized with the implemented code. The remaining acceptance boundary is machine-level validation on the target Apple M4 / 36 GB system for actual model loading, memory pressure, generation latency, and subjective visual quality; these cannot honestly be completed from CI or this repository-only environment.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -10,9 +10,9 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 19. Phase 10 — Agentic Recovery and Refinement
 
-**Status: IN PROGRESS — FALLBACK + RENDER RECOVERY INTEGRATED**
+**Status: COMPLETE — BOUNDED LOCAL RECOVERY**
 
-Recovery is explicitly finite and deterministic. Implemented `RecoveryPolicy`, `RecoveryResult`, and `run_bounded()` with zero-based attempt numbers supplied to each operation.
+Recovery is finite, deterministic, auditable, and local-only. Implemented `RecoveryPolicy`, `RecoveryResult`, and `run_bounded()` with explicit retry budgets.
 
 Current budgets:
 
@@ -23,13 +23,21 @@ Video:  3 total attempts (initial + 2 retries)
 Render: 2 total attempts (initial + 1 retry)
 ```
 
-Project media orchestration invokes bounded image recovery when a scene has no image asset and bounded video recovery for image-to-video and image-motion generation. Targeted `regenerate-scene` uses the same bounded image/video recovery paths. Video recovery refines prompts without mutating canonical scene duration. Configured local video-provider construction is centralized.
+Delivered through Phase 10:
 
-Narration generation applies deterministic pad-or-trim duration correction when synthesized audio differs materially from the canonical scene duration. Provider fallback is validated against the capability registry and persisted with primary/fallback provider identity and reason metadata. Final FFmpeg rendering has a bounded retry that removes only renderer-owned partial output before retrying and persists recovery strategy metadata in `render.json`.
+- bounded image recovery with deterministic prompt refinement
+- bounded video recovery with timing-safe prompt refinement
+- recovery in project media orchestration and targeted scene regeneration
+- centralized configured video-provider construction
+- capability-validated deterministic FFmpeg fallback
+- explicit fallback provider/model/reason metadata
+- deterministic narration pad-or-trim duration correction
+- bounded final-render retry with partial-output cleanup
+- persisted recovery metadata in scene and render manifests
+- synchronized Phase 5–10 documentation
 
-Remaining Phase 10 work:
+## Acceptance boundary
 
-1. Repository-wide Phase 5–10 documentation synchronization.
-2. Final acceptance review; target-machine model/performance acceptance remains explicitly external to CI.
+CI remains responsible for repository validation. Target-machine acceptance is intentionally separate: the actual Apple M4 / 36 GB Mac must load the configured local models and measure memory pressure, generation latency, thermal behavior, and visual output quality before those hardware-specific claims can be marked accepted.
 
 ---
