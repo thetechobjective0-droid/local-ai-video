@@ -98,7 +98,9 @@ def generate_scene_video(
     cached = _load_cached_video(video_manifest, generation_key)
     if cached is not None:
         updated_scene = scene.model_copy(update={"video_asset": cached.id, "status": "ready"})
-        store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
+        store.write_json(
+            directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json")
+        )
         return cached, updated_scene
 
     videos_dir = directory / "videos"
@@ -113,7 +115,12 @@ def generate_scene_video(
             duration_seconds=scene.duration_seconds,
             fps=fps,
             seed=seed,
-            metadata={"scene_id": str(scene.id), "scene_index": scene.index, "width": width, "height": height},
+            metadata={
+                "scene_id": str(scene.id),
+                "scene_index": scene.index,
+                "width": width,
+                "height": height,
+            },
         )
     )
     if not result.path.is_file() or result.path.stat().st_size == 0:

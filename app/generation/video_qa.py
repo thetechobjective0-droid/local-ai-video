@@ -22,9 +22,14 @@ def validate_scene_video(
         raise VideoAgentError(f"generated scene video is missing or empty: {path}")
 
     probe = [
-        ffprobe_command, "-v", "error", "-show_entries",
+        ffprobe_command,
+        "-v",
+        "error",
+        "-show_entries",
         "format=duration:stream=codec_type,width,height,r_frame_rate",
-        "-of", "json", str(path),
+        "-of",
+        "json",
+        str(path),
     ]
     try:
         inspected = subprocess.run(probe, check=False, capture_output=True, text=True, timeout=30)

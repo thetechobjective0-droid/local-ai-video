@@ -12,6 +12,7 @@ router = APIRouter()
 
 def _manager():
     from app.config import load_config
+
     return get_job_manager(FilesystemStore(load_config(None).storage.root))
 
 

@@ -44,7 +44,9 @@ def generate_scene_video_with_recovery(
             current = scene
             strategies.append("original")
         elif attempt == 1:
-            current = scene.model_copy(update={"motion_prompt": _simplify_motion_prompt(original_prompt)})
+            current = scene.model_copy(
+                update={"motion_prompt": _simplify_motion_prompt(original_prompt)}
+            )
             strategies.append("simplified_motion_prompt")
         else:
             current = scene.model_copy(
@@ -60,5 +62,7 @@ def generate_scene_video_with_recovery(
     try:
         result = run_bounded(operation, VIDEO_RETRY_POLICY)
     except Exception as exc:
-        raise VideoAgentError(f"scene video generation failed after bounded recovery: {exc}") from exc
+        raise VideoAgentError(
+            f"scene video generation failed after bounded recovery: {exc}"
+        ) from exc
     return VideoRecoveryResult(result.value, result.attempts, tuple(strategies))

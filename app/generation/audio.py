@@ -65,9 +65,13 @@ def generate_scene_audio(
             **result.metadata,
         },
     )
-    store.write_json(directory, f"scene-{scene.index:04d}-audio.json", artifact.model_dump(mode="json"))
+    store.write_json(
+        directory, f"scene-{scene.index:04d}-audio.json", artifact.model_dump(mode="json")
+    )
     updated_scene = scene.model_copy(update={"audio_asset": artifact.id})
-    store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
+    store.write_json(
+        directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json")
+    )
 
     from app.generation.audio_recovery import correct_scene_audio_duration
 

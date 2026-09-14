@@ -68,7 +68,9 @@ def correct_scene_audio_duration(
         str(output),
     ]
     try:
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=120)
+        completed = subprocess.run(
+            command, check=False, capture_output=True, text=True, timeout=120
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise VideoAgentError("FFmpeg narration duration correction is unavailable") from exc
     if completed.returncode != 0:

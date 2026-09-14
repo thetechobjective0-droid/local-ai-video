@@ -138,7 +138,11 @@ def _validate_scene_assets(
             if artifact.id != scene.audio_asset:
                 failures.append(QAFailure(scope, "audio asset UUID does not match scene manifest"))
             try:
-                validate_audio(artifact.path, expected_duration=scene.duration_seconds, ffprobe_command=ffprobe_command)
+                validate_audio(
+                    artifact.path,
+                    expected_duration=scene.duration_seconds,
+                    ffprobe_command=ffprobe_command,
+                )
                 validate_audio_quality(artifact.path, ffmpeg_command=ffmpeg_command)
             except (VideoAgentError, ValueError) as exc:
                 failures.append(QAFailure(scope, f"audio QA failed: {exc}"))
@@ -160,7 +164,9 @@ def _validate_scene_assets(
                 failures.append(QAFailure(scope, f"video QA failed: {exc}"))
 
 
-def _validate_timeline(project: VideoProject, scenes: list[Scene], timeline: Timeline, failures: list[QAFailure]) -> None:
+def _validate_timeline(
+    project: VideoProject, scenes: list[Scene], timeline: Timeline, failures: list[QAFailure]
+) -> None:
     if timeline.project_id != project.id:
         failures.append(QAFailure("timeline", "timeline project UUID does not match project"))
     if abs(timeline.duration_seconds - project.duration_seconds) > 0.05:
@@ -168,20 +174,30 @@ def _validate_timeline(project: VideoProject, scenes: list[Scene], timeline: Tim
     cursor = 0.0
     for item in sorted(timeline.scenes, key=lambda scene: scene.index):
         if abs(item.start_seconds - cursor) > 1e-6:
-            failures.append(QAFailure(f"scene-{item.index:04d}", "timeline contains a timing gap or overlap"))
+            failures.append(
+                QAFailure(f"scene-{item.index:04d}", "timeline contains a timing gap or overlap")
+            )
         if item.duration_seconds <= 0:
-            failures.append(QAFailure(f"scene-{item.index:04d}", "timeline duration is not positive"))
+            failures.append(
+                QAFailure(f"scene-{item.index:04d}", "timeline duration is not positive")
+            )
         cursor += item.duration_seconds
     if abs(cursor - timeline.duration_seconds) > 0.05:
-        failures.append(QAFailure("timeline", "timeline scene durations do not sum to timeline duration"))
+        failures.append(
+            QAFailure("timeline", "timeline scene durations do not sum to timeline duration")
+        )
     scene_ids = {scene.id for scene in scenes}
     timeline_ids = {scene.scene_id for scene in timeline.scenes}
     missing = scene_ids - timeline_ids
     if missing:
-        failures.append(QAFailure("timeline", f"scenes missing from timeline: {sorted(map(str, missing))}"))
+        failures.append(
+            QAFailure("timeline", f"scenes missing from timeline: {sorted(map(str, missing))}")
+        )
 
 
-def _validate_subtitles(directory: Path, timeline: Timeline | None, failures: list[QAFailure]) -> None:
+def _validate_subtitles(
+    directory: Path, timeline: Timeline | None, failures: list[QAFailure]
+) -> None:
     if timeline is None:
         return
     path = directory / ("subtitles.vtt" if timeline.subtitle_format == "vtt" else "subtitles.srt")

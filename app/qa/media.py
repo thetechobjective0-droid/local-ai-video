@@ -54,10 +54,14 @@ def validate_audio(
         raise VideoAgentError(f"audio artifact is missing or empty: {path}")
     command = [
         ffprobe_command,
-        "-v", "error",
-        "-select_streams", "a:0",
-        "-show_entries", "stream=codec_type,sample_rate,channels:format=duration",
-        "-of", "json",
+        "-v",
+        "error",
+        "-select_streams",
+        "a:0",
+        "-show_entries",
+        "stream=codec_type,sample_rate,channels:format=duration",
+        "-of",
+        "json",
         str(path),
     ]
     try:

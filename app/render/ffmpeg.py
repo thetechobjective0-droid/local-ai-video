@@ -105,7 +105,10 @@ class FFmpegRenderer:
                 "command": command,
                 "filter_complex": filter_complex,
                 "artifact_id": str(artifact.id),
-                "recovery": {"attempts": len(recovery_strategies), "strategies": recovery_strategies},
+                "recovery": {
+                    "attempts": len(recovery_strategies),
+                    "strategies": recovery_strategies,
+                },
             },
         )
         return artifact
