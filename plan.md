@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. **Phase 10 — Agentic Recovery and Refinement is now in progress**, with a bounded recovery foundation implemented. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
+Phase 0–8 are substantially implemented. **Phase 9 deterministic quality assurance is complete**, including project QA reporting, targeted scene regeneration, image/audio/video integrity validation, audio loudness/silence gates, timeline/subtitle validation, and final-video validation. **Phase 10 — Agentic Recovery and Refinement is now in progress**, with bounded recovery foundation and deterministic image-generation recovery implemented. Target Apple M4 / 36 GB hardware acceptance remains a separate machine-level acceptance activity.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -202,7 +202,7 @@ Implemented image, audio, video, timeline, subtitle, project, and final-render v
 
 # 19. Phase 10 — Agentic Recovery and Refinement
 
-**Status: IN PROGRESS — BOUNDED RECOVERY FOUNDATION**
+**Status: IN PROGRESS — IMAGE RECOVERY INTEGRATED**
 
 Recovery is explicitly finite and deterministic. Implemented `RecoveryPolicy`, `RecoveryResult`, and `run_bounded()` with zero-based attempt numbers supplied to each operation.
 
@@ -215,15 +215,15 @@ Video:  3 total attempts (initial + 2 retries)
 Render: 2 total attempts (initial + 1 retry)
 ```
 
-The recovery primitive propagates final failures and does not alter local-only policy, provider selection, filesystem boundaries, or resource constraints.
+Image recovery now wraps scene image generation in the image retry budget and uses deterministic refinement: original prompt, whitespace/length-normalized prompt, then visual-description fallback. Provider failures remain failures after the finite budget and are surfaced as domain errors.
 
 Next Phase 10 increments:
 
-1. Integrate bounded recovery into image/video generation.
-2. Add deterministic prompt/settings refinement between attempts.
+1. Integrate bounded recovery into video generation.
+2. Add deterministic video settings refinement and fallback.
 3. Add narration duration correction.
 4. Add bounded render recovery.
-5. Persist recovery attempt metadata.
+5. Persist recovery attempt metadata across stages.
 6. Complete Phase 10 acceptance.
 
 ---
