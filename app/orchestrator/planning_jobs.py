@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import json
+from pathlib import Path
 from threading import Lock
 from uuid import UUID, uuid4
-import json
 import tempfile
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import load_config
-from app.director.project import plan_existing_project
+from app.director.project import _run_plan
 from app.models.project import ProjectStatus
 from app.providers.ollama import OllamaProvider
 from app.storage.filesystem import FilesystemStore
@@ -37,7 +38,7 @@ class PlanningJobManager:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-agent-plan")
         self._lock = Lock()
 
-    def _path(self, job_id: UUID):
+    def _path(self, job_id: UUID) -> Path:
         jobs_dir = self.store.root / "planning-jobs"
         jobs_dir.mkdir(parents=True, exist_ok=True)
         return jobs_dir / f"{job_id}.json"
@@ -49,10 +50,8 @@ class PlanningJobManager:
             mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False
         ) as temp:
             temp.write(payload)
-            temp_path = temp.name
-        from pathlib import Path
-
-        Path(temp_path).replace(path)
+            temp_path = Path(temp.name)
+        temp_path.replace(path)
         return job
 
     def _update(self, job_id: UUID, **changes: object) -> PlanningJob:
@@ -86,17 +85,17 @@ class PlanningJobManager:
             provider = OllamaProvider(config.llm.base_url)
             provider.require_health()
             provider.require_model(config.llm.model)
-            store = FilesystemStore(config.storage.root)
-            plan_existing_project(
+            project = self.store.load_project(job.project_id)
+            _run_plan(
                 provider,
-                store,
-                job.project_id,
+                self.store,
+                self.store.project_dir(job.project_id),
+                project,
                 model=config.llm.model,
                 temperature=config.llm.temperature,
                 top_p=config.llm.top_p,
                 top_k=config.llm.top_k,
-                quality_profile=config.runtime.profile,
-                on_stage=lambda stage: self._update(job_id, completed_stage=stage),
+                start_from="brief",
             )
             self._update(job_id, state="completed", completed_stage="storyboard")
         except Exception as exc:
