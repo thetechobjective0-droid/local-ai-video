@@ -67,6 +67,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - background job API helpers and response boundaries are explicitly typed for strict mypy
 - web API helpers, dynamic JSON response boundaries, provider instances, and configuration access are explicitly typed for strict mypy
 - media job listing avoids shadowing the `list` method name, eliminating a strict-mypy type resolution error
+- job-manager collection annotations also avoid the class-level `list` method shadow
 - strict mypy configuration keeps heavy optional ML packages out of the CI environment while preserving type checking of application boundaries
 - corrected Python health-check field typing for strict mypy
 - typed the optional LTX video provider
