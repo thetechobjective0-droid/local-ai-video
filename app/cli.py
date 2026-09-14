@@ -17,7 +17,7 @@ from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
-from app.orchestrator.media_strategy import VideoCapability
+from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.ffmpeg_video import FFmpegVideoProvider
 from app.providers.ltx_video import LTXVideoProvider
@@ -72,18 +72,14 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
 
 def _video_provider_and_store(
     config_path: Path | None,
-) -> tuple[VideoProvider, FilesystemStore, VideoCapability]:
+) -> tuple[VideoProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
         raise typer.BadParameter("local_only must remain enabled")
     store = FilesystemStore(app_config.storage.root)
     if app_config.video.provider == "ffmpeg_ken_burns":
-        return (
-            FFmpegVideoProvider(),
-            store,
-            VideoCapability(image_to_video=True, max_duration_seconds=3600),
-        )
+        return FFmpegVideoProvider(), store
     if app_config.video.provider == "ltx_video":
         if app_config.video.model_path is None:
             raise typer.BadParameter("video.model_path is required for the local LTX provider")
@@ -94,7 +90,6 @@ def _video_provider_and_store(
                 dtype=app_config.video.dtype,
             ),
             store,
-            VideoCapability(image_to_video=True, max_duration_seconds=20, memory_class="high"),
         )
     raise typer.BadParameter(f"unsupported local video provider: {app_config.video.provider}")
 
@@ -254,7 +249,7 @@ def generate_video(
 ) -> None:
     """Generate one scene motion clip using the configured local video provider."""
     app_config = load_config(config)
-    provider, store, _ = _video_provider_and_store(config)
+    provider, store = _video_provider_and_store(config)
     project_uuid = UUID(project_id)
     scene = _load_scene(store, project_uuid, UUID(scene_id))
     artifact, _ = generate_scene_video(
@@ -273,12 +268,12 @@ def generate_video(
 @app.command("generate-media")
 def generate_media(
     project_id: str,
-    memory_gb: float | None = typer.Option(None, "--memory-gb", min=0),
     config: Path | None = typer.Option(None, "--config", exists=True),
 ) -> None:
-    """Generate project media using deterministic strategy and safe fallback."""
+    """Generate project media using deterministic strategy and local resources."""
     app_config = load_config(config)
-    provider, store, capability = _video_provider_and_store(config)
+    provider, store = _video_provider_and_store(config)
+    capability = get_provider_capabilities(app_config.video.provider).video
     project_uuid = UUID(project_id)
     results = generate_project_media(
         store,
@@ -287,7 +282,6 @@ def generate_media(
         video_provider=provider,
         fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None,
         video_capability=capability,
-        available_memory_gb=memory_gb,
         width=app_config.video.width,
         height=app_config.video.height,
         fps=app_config.video.fps,
