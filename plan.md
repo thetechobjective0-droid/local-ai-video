@@ -31,23 +31,23 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
-| 14 | Semantic/visual evaluation | NEXT |
+| 14 | Semantic/visual evaluation | IN PROGRESS; deterministic semantic baseline added |
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
 | 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart regression tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
-| 21 | M4 performance/resource optimization | PLANNED; depends on measurements |
+| 21 | M4 resource/performance optimization | PLANNED; depends on measurements |
 | 22 | V1 production gate | PLANNED |
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
-## Phases 0–12 — implemented foundation
+## Implemented foundation: Phases 0–13
 
-The repository contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, and final-video gating.
+The repository contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, final-video gating, target-machine acceptance reporting, renderer path containment, and stale planning-job recovery.
 
-The job layer owns scheduling/lifecycle only. Director, media generation, provider, recovery, QA, artifact persistence and rendering services remain the authoritative implementation boundaries.
+The job layer owns scheduling/lifecycle only. Director, media generation, provider, recovery, QA, artifact persistence and rendering remain the authoritative boundaries.
 
 ## Phase 13 — Target-machine acceptance harness
 
@@ -55,19 +55,29 @@ The job layer owns scheduling/lifecycle only. Director, media generation, provid
 
 `app/acceptance.py` provides local-only/platform/tool/model readiness checks, MPS readiness, model-load timing, real scene image generation timing, real configured video-provider model-load timing when applicable, real scene-video generation timing, before/after resource snapshots, deterministic project QA, final FFmpeg render/final QA, and a machine-readable JSON report.
 
-CLI:
-
 ```bash
 uv run video-agent acceptance --no-media
 uv run video-agent acceptance --project-id <PROJECT_ID>
 uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance-report.json
 ```
 
-`--no-media` is readiness-only. A full acceptance run must execute actual local model inference on the target M4. CI covers the readiness/report logic without downloading model weights.
+`--no-media` is readiness-only. A full acceptance run must execute actual local model inference on the target M4. CI intentionally does not download model weights.
 
 ## Phase 14 — Semantic / visual evaluation
 
-Implement evaluation beyond hard media integrity: prompt-to-image alignment, storyboard-to-media consistency, I2V motion quality, narration/script alignment, adjacent-scene visual continuity, and final-video evaluation. Keep evaluation reports separate from deterministic QA; semantic scores cannot override hard integrity failures.
+**In progress.** A deterministic baseline now scores project-prompt lexical alignment and adjacent-scene lexical continuity while refusing to run when deterministic hard QA fails. Reports are persisted separately as `evaluation-report.json` so evaluation cannot override integrity QA.
+
+Remaining work:
+
+- local image/scene semantic evaluation;
+- I2V motion quality evaluation;
+- narration/script alignment;
+- stronger storyboard-to-media consistency;
+- visual continuity beyond lexical overlap;
+- final-video evaluation protocol;
+- optional local-model evaluator behind a provider boundary.
+
+No semantic score may override a hard media-integrity failure.
 
 ## Phase 15 — Advanced recovery/refinement
 
@@ -79,9 +89,9 @@ Centralize provider/model profiles, compatibility checks, health/readiness contr
 
 ## Phase 17 — Security/locality hardening
 
-**In progress.** Renderer artifact resolution now rejects absolute/relative paths that resolve outside the project directory. Planning-job paths use storage-root containment and stale `queued`/`running` planning jobs are persisted as `interrupted` after restart.
+**In progress.** Renderer artifact resolution rejects absolute/relative paths that resolve outside the project directory. Planning-job paths use storage-root containment and stale `queued`/`running` jobs become `interrupted` after restart. HTTP prompt/style/duration inputs now have bounded sizes.
 
-Remaining work includes HTTP input-size limits, complete filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
+Remaining work includes complete filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
 
 Security invariant: malformed input must never become arbitrary filesystem access, subprocess execution, remote upload, or uncontrolled resource consumption.
 
@@ -120,7 +130,7 @@ After V1 stability, consider richer transitions/camera controls/subtitles/audio 
         ↓
 real M4 model/media acceptance  [TARGET MACHINE]
         ↓
-14 semantic/visual evaluation
+14 semantic/visual evaluation  [IN PROGRESS]
         ↓
 15 advanced recovery
         ↓
