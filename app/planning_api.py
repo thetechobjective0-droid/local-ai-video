@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.config import load_config
 from app.models.project import VideoProject
@@ -12,12 +13,20 @@ from app.storage.filesystem import FilesystemStore
 router = APIRouter()
 
 
+class CreateProjectRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    prompt: str = Field(min_length=1)
+    duration: float = Field(default=60.0, gt=0)
+    style: str = Field(default="cinematic", min_length=1)
+    aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
+
+
 def _store() -> FilesystemStore:
     return FilesystemStore(load_config(None).storage.root)
 
 
 @router.post("/api/projects", status_code=202)
-def create_project_async(request) -> dict[str, object]:
+def create_project_async(request: CreateProjectRequest) -> dict[str, object]:
     config = load_config(None)
     if not config.runtime.local_only:
         raise HTTPException(status_code=503, detail="local_only must remain enabled")
