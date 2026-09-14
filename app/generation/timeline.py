@@ -53,5 +53,7 @@ def build_timeline(
         scenes=entries,
         metadata={"scene_count": len(entries), "output": str(Path("final.mp4"))},
     )
-    store.write_json(store.project_dir(project.id), "timeline.json", timeline.model_dump(mode="json"))
+    store.write_json(
+        store.project_dir(project.id), "timeline.json", timeline.model_dump(mode="json")
+    )
     return timeline

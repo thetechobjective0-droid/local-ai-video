@@ -19,7 +19,12 @@ def test_build_subtitles_writes_srt_and_vtt(tmp_path) -> None:
             duration_seconds=4,
             narration="A short introduction to local AI video generation.",
         ),
-        Scene(index=2, start_seconds=4, duration_seconds=3, narration="The pipeline then renders the result."),
+        Scene(
+            index=2,
+            start_seconds=4,
+            duration_seconds=3,
+            narration="The pipeline then renders the result.",
+        ),
     ]
 
     outputs = build_subtitles(store, project_id, scenes, max_chars=30)

@@ -96,7 +96,11 @@ def generate_scene_video(
             **result.metadata,
         },
     )
-    store.write_json(directory, f"scene-{scene.index:04d}-video.json", artifact.model_dump(mode="json"))
+    store.write_json(
+        directory, f"scene-{scene.index:04d}-video.json", artifact.model_dump(mode="json")
+    )
     updated_scene = scene.model_copy(update={"video_asset": artifact.id, "status": "ready"})
-    store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
+    store.write_json(
+        directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json")
+    )
     return artifact, updated_scene

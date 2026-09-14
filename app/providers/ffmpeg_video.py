@@ -61,7 +61,9 @@ class FFmpegVideoProvider:
             str(request.output_path),
         ]
         try:
-            completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=300)
+            completed = subprocess.run(
+                command, check=False, capture_output=True, text=True, timeout=300
+            )
         except subprocess.TimeoutExpired as exc:
             raise ProviderUnavailableError("FFmpeg video generation timed out") from exc
         except OSError as exc:

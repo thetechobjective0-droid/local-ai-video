@@ -18,8 +18,9 @@ from app.storage.runs import GenerationRunStore
 T = TypeVar("T", bound=BaseModel)
 
 
-def _save_status(store: FilesystemStore, directory: Path, project: VideoProject,
-                 status: ProjectStatus) -> None:
+def _save_status(
+    store: FilesystemStore, directory: Path, project: VideoProject, status: ProjectStatus
+) -> None:
     project.status = status
     project.updated_at = datetime.now(timezone.utc)
     store.write_json(directory, "project.json", project.model_dump(mode="json"))
@@ -101,8 +102,15 @@ def create_plan(
     )
     directory = store.create_project(project)
     return _run_plan(
-        provider, store, directory, project, model=model, temperature=temperature,
-        top_p=top_p, top_k=top_k, start_from="brief",
+        provider,
+        store,
+        directory,
+        project,
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        start_from="brief",
     )
 
 
@@ -121,7 +129,9 @@ def resume_plan(
     project = store.load_project(project_id)
     if not directory.is_dir():
         raise FileNotFoundError(f"project directory does not exist: {project_id}")
-    if project.status == ProjectStatus.STORYBOARD_READY and _load_artifact(directory, "storyboard.json", Storyboard):
+    if project.status == ProjectStatus.STORYBOARD_READY and _load_artifact(
+        directory, "storyboard.json", Storyboard
+    ):
         return directory
     start_from = "brief"
     if _load_artifact(directory, "brief.json", CreativeBrief):
@@ -129,8 +139,15 @@ def resume_plan(
         if _load_artifact(directory, "script.json", Script):
             start_from = "storyboard"
     return _run_plan(
-        provider, store, directory, project, model=model, temperature=temperature,
-        top_p=top_p, top_k=top_k, start_from=start_from,
+        provider,
+        store,
+        directory,
+        project,
+        model=model,
+        temperature=temperature,
+        top_p=top_p,
+        top_k=top_k,
+        start_from=start_from,
     )
 
 
@@ -151,10 +168,28 @@ def _run_plan(
         brief = _load_artifact(directory, "brief.json", CreativeBrief)
         if start_from == "brief" or brief is None:
             brief = _run_stage(
-                store, directory, project, "brief", provider, model, params,
-                {"prompt": project.source_prompt, "duration_seconds": project.duration_seconds, "style": project.style},
-                lambda: build_brief(provider, project.source_prompt, project.duration_seconds, project.style,
-                                     model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                store,
+                directory,
+                project,
+                "brief",
+                provider,
+                model,
+                params,
+                {
+                    "prompt": project.source_prompt,
+                    "duration_seconds": project.duration_seconds,
+                    "style": project.style,
+                },
+                lambda: build_brief(
+                    provider,
+                    project.source_prompt,
+                    project.duration_seconds,
+                    project.style,
+                    model=model,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
                 ["brief.json"],
             )
             project.title = brief.title
@@ -167,9 +202,17 @@ def _run_plan(
         script = _load_artifact(directory, "script.json", Script)
         if start_from in {"brief", "script"} or script is None:
             script = _run_stage(
-                store, directory, project, "script", provider, model, params,
+                store,
+                directory,
+                project,
+                "script",
+                provider,
+                model,
+                params,
                 {"brief": brief.model_dump(mode="json")},
-                lambda: build_script(provider, brief, model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                lambda: build_script(
+                    provider, brief, model=model, temperature=temperature, top_p=top_p, top_k=top_k
+                ),
                 ["script.json"],
             )
             store.write_json(directory, "script.json", script.model_dump(mode="json"))
@@ -178,9 +221,23 @@ def _run_plan(
         storyboard = _load_artifact(directory, "storyboard.json", Storyboard)
         if start_from in {"brief", "script", "storyboard"} or storyboard is None:
             storyboard = _run_stage(
-                store, directory, project, "storyboard", provider, model, params,
+                store,
+                directory,
+                project,
+                "storyboard",
+                provider,
+                model,
+                params,
                 {"brief": brief.model_dump(mode="json"), "script": script.model_dump(mode="json")},
-                lambda: build_storyboard(provider, brief, script, model=model, temperature=temperature, top_p=top_p, top_k=top_k),
+                lambda: build_storyboard(
+                    provider,
+                    brief,
+                    script,
+                    model=model,
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                ),
                 ["storyboard.json"],
             )
             store.write_json(directory, "storyboard.json", storyboard.model_dump(mode="json"))

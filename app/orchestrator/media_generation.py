@@ -94,7 +94,9 @@ def generate_project_media(
                 fps=fps,
             )
         elif selected is MediaType.TEXT_TO_VIDEO:
-            raise VideoAgentError("text-to-video routing is not implemented by the current project orchestrator")
+            raise VideoAgentError(
+                "text-to-video routing is not implemented by the current project orchestrator"
+            )
         elif current.image_asset is None:
             raise VideoAgentError(f"scene {current.index} has no image asset for static media")
 
@@ -108,7 +110,9 @@ def generate_project_media(
             }
         )
         directory = store.project_dir(project_id)
-        store.write_json(directory, f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
+        store.write_json(
+            directory, f"scene-{current.index:04d}.json", current.model_dump(mode="json")
+        )
         results.append(SceneMediaResult(current, selected, used_fallback))
 
     return results

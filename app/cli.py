@@ -48,7 +48,9 @@ def _provider_and_store(config_path: Path | None) -> tuple[OllamaProvider, Files
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _image_provider_and_store(config_path: Path | None) -> tuple[DiffusersImageProvider, FilesystemStore]:
+def _image_provider_and_store(
+    config_path: Path | None,
+) -> tuple[DiffusersImageProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
@@ -285,7 +287,9 @@ def generate_media(
         project_uuid,
         _load_scenes(store, project_uuid),
         video_provider=provider,
-        fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None,
+        fallback_provider=FFmpegVideoProvider()
+        if app_config.video.provider != "ffmpeg_ken_burns"
+        else None,
         video_capability=capability,
         available_memory_gb=memory_gb,
         width=app_config.video.width,
@@ -306,7 +310,9 @@ def subtitles(
     """Generate deterministic SRT and WebVTT subtitles for a project."""
     store = FilesystemStore(load_config(config).storage.root)
     project_uuid = UUID(project_id)
-    outputs = build_subtitles(store, project_uuid, _load_scenes(store, project_uuid), max_chars=max_chars)
+    outputs = build_subtitles(
+        store, project_uuid, _load_scenes(store, project_uuid), max_chars=max_chars
+    )
     for format_name, path in outputs.items():
         typer.echo(f"Generated {format_name}: {path}")
 

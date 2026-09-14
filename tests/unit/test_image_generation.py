@@ -38,9 +38,7 @@ def test_generate_scene_image_persists_artifact_and_scene(tmp_path: Path) -> Non
         image_prompt="cinematic sunrise over mountains",
     )
 
-    artifact, updated = generate_scene_image(
-        FakeImageProvider(), store, project_id, scene, seed=42
-    )
+    artifact, updated = generate_scene_image(FakeImageProvider(), store, project_id, scene, seed=42)
 
     assert artifact.project_id == project_id
     assert artifact.scene_id == scene.id

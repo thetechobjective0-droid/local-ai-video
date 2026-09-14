@@ -62,7 +62,10 @@ class Storyboard(BaseModel):
                 subtitle_start, subtitle_end = scene.subtitle_range
                 if subtitle_start < 0 or subtitle_end <= subtitle_start:
                     raise ValueError("subtitle range must be positive and ordered")
-                if subtitle_start < scene.start_seconds - 1e-6 or subtitle_end > scene.start_seconds + scene.duration_seconds + 1e-6:
+                if (
+                    subtitle_start < scene.start_seconds - 1e-6
+                    or subtitle_end > scene.start_seconds + scene.duration_seconds + 1e-6
+                ):
                     raise ValueError("subtitle range must remain inside scene interval")
             previous_end = scene.start_seconds + scene.duration_seconds
         return self
@@ -76,10 +79,6 @@ def validate_storyboard_duration(
     """Ensure the storyboard ends at the requested project duration."""
     if target_duration_seconds <= 0 or tolerance_seconds < 0:
         raise ValueError("target duration must be positive and tolerance non-negative")
-    end = max(
-        scene.start_seconds + scene.duration_seconds for scene in storyboard.scenes
-    )
+    end = max(scene.start_seconds + scene.duration_seconds for scene in storyboard.scenes)
     if abs(end - target_duration_seconds) > tolerance_seconds:
-        raise ValueError(
-            f"storyboard ends at {end:.3f}s; target is {target_duration_seconds:.3f}s"
-        )
+        raise ValueError(f"storyboard ends at {end:.3f}s; target is {target_duration_seconds:.3f}s")

@@ -42,9 +42,7 @@ def test_ollama_health_reports_unreachable() -> None:
 def test_ollama_models_returns_installed_names() -> None:
     with patch(
         "app.providers.ollama.urlopen",
-        return_value=Response(
-            b'{"models": [{"name": "qwen3:4b"}, {"name": "qwen2.5-coder:32b"}]}'
-        ),
+        return_value=Response(b'{"models": [{"name": "qwen3:4b"}, {"name": "qwen2.5-coder:32b"}]}'),
     ):
         assert OllamaProvider().models() == ["qwen3:4b", "qwen2.5-coder:32b"]
 

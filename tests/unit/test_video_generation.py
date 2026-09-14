@@ -35,12 +35,24 @@ def test_generate_scene_video_persists_artifact_and_scene(tmp_path: Path) -> Non
     image = project_dir / "images" / "scene-0001.png"
     image.parent.mkdir()
     image.write_bytes(b"image")
-    scene = Scene(index=1, start_seconds=0, duration_seconds=4, image_asset=uuid4(), motion_prompt="slow camera push")
+    scene = Scene(
+        index=1,
+        start_seconds=0,
+        duration_seconds=4,
+        image_asset=uuid4(),
+        motion_prompt="slow camera push",
+    )
     store.write_json(project_dir, "scene-0001.json", scene.model_dump(mode="json"))
     store.write_json(
         project_dir,
         "scene-0001-image.json",
-        Artifact(project_id=project_id, scene_id=scene.id, type="scene_image", path=image, mime="image/png").model_dump(mode="json"),
+        Artifact(
+            project_id=project_id,
+            scene_id=scene.id,
+            type="scene_image",
+            path=image,
+            mime="image/png",
+        ).model_dump(mode="json"),
     )
 
     artifact, updated = generate_scene_video(FakeVideoProvider(), store, project_id, scene, fps=12)
