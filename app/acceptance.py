@@ -177,7 +177,12 @@ def run_acceptance(
             load = getattr(video_provider, "_load_pipeline", None)
             if callable(load):
                 load()
-                add("video_model_load", True, "local video model loaded", monotonic() - video_load_start)
+                add(
+                    "video_model_load",
+                    True,
+                    "local video model loaded",
+                    monotonic() - video_load_start,
+                )
             else:
                 add("video_model_load", True, "deterministic provider has no model-load stage")
             video_start = monotonic()
@@ -198,13 +203,26 @@ def run_acceptance(
             )
 
             report = validate_project(store, project_id)
-            add("project_qa", report.passed, "QA PASS" if report.passed else "; ".join(f.message for f in report.failures))
+            add(
+                "project_qa",
+                report.passed,
+                "QA PASS" if report.passed else "; ".join(f.message for f in report.failures),
+            )
             timeline = _timeline(store, project_id)
             render_start = monotonic()
             artifact = FFmpegRenderer().render(store, project_id, timeline)
-            add("final_render", artifact.path.is_file() and artifact.path.stat().st_size > 0, str(artifact.path), monotonic() - render_start)
+            add(
+                "final_render",
+                artifact.path.is_file() and artifact.path.stat().st_size > 0,
+                str(artifact.path),
+                monotonic() - render_start,
+            )
             final_qa = validate_project(store, project_id)
-            add("final_qa", final_qa.passed, "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures))
+            add(
+                "final_qa",
+                final_qa.passed,
+                "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures),
+            )
         except Exception as exc:
             add("media_pipeline", False, f"{type(exc).__name__}: {exc}")
 
