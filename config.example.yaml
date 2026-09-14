@@ -25,5 +25,10 @@ tts:
   rate: 180
   sample_rate: 22050
 
+video:
+  provider: ffmpeg_ken_burns
+  device: mps
+  fps: 16
+
 storage:
   root: ./data
