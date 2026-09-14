@@ -5,12 +5,14 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from app.exceptions import VideoAgentError
-from app.generation.video import generate_scene_video
+from app.generation.image_recovery import generate_scene_image_with_recovery
+from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
 from app.preflight import ResourceSnapshot, memory_gib, snapshot
 from app.providers.capabilities import get_provider_capabilities
+from app.providers.image import ImageProvider
 from app.providers.video import VideoProvider
 from app.storage.filesystem import FilesystemStore
 
@@ -50,6 +52,7 @@ def generate_project_media(
     scenes: list[Scene],
     *,
     video_provider: VideoProvider,
+    image_provider: ImageProvider | None = None,
     video_capability: VideoCapability | None = None,
     fallback_provider: VideoProvider | None = None,
     available_memory_gb: float | None = None,
@@ -58,7 +61,7 @@ def generate_project_media(
     height: int = 384,
     fps: int = 16,
 ) -> list[SceneMediaResult]:
-    """Resolve and generate project media using registered capabilities and resources."""
+    """Generate project media with bounded image/video recovery."""
     if not scenes:
         raise VideoAgentError("cannot generate project media without scenes")
 
@@ -70,14 +73,57 @@ def generate_project_media(
     results: list[SceneMediaResult] = []
     try:
         for scene in sorted(scenes, key=lambda item: item.index):
-            selected = select_media_type(scene, video=capability, available_memory_gb=effective_memory_gb)
             current = scene
+            if image_provider is not None and current.image_asset is None:
+                image_result = generate_scene_image_with_recovery(
+                    image_provider,
+                    store,
+                    project_id,
+                    current,
+                )
+                current = image_result.scene
+                current = current.model_copy(
+                    update={
+                        "metadata": {
+                            **current.metadata,
+                            "image_recovery": {
+                                "attempts": image_result.attempts,
+                                "strategies": list(image_result.strategies),
+                            },
+                        }
+                    }
+                )
+                store.write_json(
+                    store.project_dir(project_id),
+                    f"scene-{current.index:04d}.json",
+                    current.model_dump(mode="json"),
+                )
+
+            selected = select_media_type(current, video=capability, available_memory_gb=effective_memory_gb)
             used_fallback = False
 
             if selected is MediaType.IMAGE_TO_VIDEO:
                 try:
-                    _, current = generate_scene_video(
-                        video_provider, store, project_id, current, width=width, height=height, fps=fps
+                    video_result = generate_scene_video_with_recovery(
+                        video_provider,
+                        store,
+                        project_id,
+                        current,
+                        width=width,
+                        height=height,
+                        fps=fps,
+                    )
+                    current = video_result.scene
+                    current = current.model_copy(
+                        update={
+                            "metadata": {
+                                **current.metadata,
+                                "video_recovery": {
+                                    "attempts": video_result.attempts,
+                                    "strategies": list(video_result.strategies),
+                                },
+                            }
+                        }
                     )
                 except (VideoAgentError, ValueError):
                     if fallback_provider is None:
@@ -89,8 +135,26 @@ def generate_project_media(
                     used_fallback = True
             elif selected is MediaType.IMAGE_MOTION:
                 motion_provider = fallback_provider if fallback_provider is not None else video_provider
-                _, current = generate_scene_video(
-                    motion_provider, store, project_id, current, width=width, height=height, fps=fps
+                video_result = generate_scene_video_with_recovery(
+                    motion_provider,
+                    store,
+                    project_id,
+                    current,
+                    width=width,
+                    height=height,
+                    fps=fps,
+                )
+                current = video_result.scene
+                current = current.model_copy(
+                    update={
+                        "metadata": {
+                            **current.metadata,
+                            "video_recovery": {
+                                "attempts": video_result.attempts,
+                                "strategies": list(video_result.strategies),
+                            },
+                        }
+                    }
                 )
             elif selected is MediaType.TEXT_TO_VIDEO:
                 raise VideoAgentError("text-to-video routing is not implemented by the current project orchestrator")
