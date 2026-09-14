@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.exceptions import VideoAgentError
 from app.generation.video import generate_scene_video
+from app.models.project import ProjectStatus
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
 from app.preflight import ResourceSnapshot, memory_gib, snapshot
@@ -35,6 +36,16 @@ def _resolve_resources(store: FilesystemStore, resource_snapshot: ResourceSnapsh
     return resource_snapshot if resource_snapshot is not None else snapshot(store.root)
 
 
+def _set_project_status(store: FilesystemStore, project_id: UUID, status: ProjectStatus) -> None:
+    """Persist a project lifecycle transition with a fresh update timestamp."""
+    project = store.load_project(project_id)
+    store.write_json(
+        store.project_dir(project_id),
+        "project.json",
+        project.model_copy(update={"status": status, "updated_at": __import__("datetime").datetime.now(__import__("datetime").timezone.utc)}).model_dump(mode="json"),
+    )
+
+
 def generate_project_media(
     store: FilesystemStore,
     project_id: UUID,
@@ -57,74 +68,62 @@ def generate_project_media(
     measured_memory_gb = memory_gib(resources.available_memory_bytes)
     effective_memory_gb = measured_memory_gb if available_memory_gb is None else available_memory_gb
     capability = video_capability or _provider_capability(video_provider)
+    _set_project_status(store, project_id, ProjectStatus.ASSETS_GENERATING)
     results: list[SceneMediaResult] = []
-    for scene in sorted(scenes, key=lambda item: item.index):
-        selected = select_media_type(
-            scene,
-            video=capability,
-            available_memory_gb=effective_memory_gb,
-        )
-        current = scene
-        used_fallback = False
-
-        if selected is MediaType.IMAGE_TO_VIDEO:
-            try:
-                _, current = generate_scene_video(
-                    video_provider,
-                    store,
-                    project_id,
-                    current,
-                    width=width,
-                    height=height,
-                    fps=fps,
-                )
-            except (VideoAgentError, ValueError):
-                if fallback_provider is None:
-                    raise
-                _, current = generate_scene_video(
-                    fallback_provider,
-                    store,
-                    project_id,
-                    current,
-                    width=width,
-                    height=height,
-                    fps=fps,
-                )
-                selected = MediaType.IMAGE_MOTION
-                used_fallback = True
-        elif selected is MediaType.IMAGE_MOTION:
-            motion_provider = fallback_provider if fallback_provider is not None else video_provider
-            _, current = generate_scene_video(
-                motion_provider,
-                store,
-                project_id,
-                current,
-                width=width,
-                height=height,
-                fps=fps,
+    try:
+        for scene in sorted(scenes, key=lambda item: item.index):
+            selected = select_media_type(
+                scene,
+                video=capability,
+                available_memory_gb=effective_memory_gb,
             )
-        elif selected is MediaType.TEXT_TO_VIDEO:
-            raise VideoAgentError("text-to-video routing is not implemented by the current project orchestrator")
-        elif current.image_asset is None:
-            raise VideoAgentError(f"scene {current.index} has no image asset for static media")
+            current = scene
+            used_fallback = False
 
-        current = current.model_copy(
-            update={
-                "metadata": {
-                    **current.metadata,
-                    "selected_media_type": selected.value,
-                    "media_fallback_used": used_fallback,
-                    "resource_snapshot": {
-                        "total_memory_bytes": resources.total_memory_bytes,
-                        "available_memory_bytes": resources.available_memory_bytes,
-                        "free_disk_bytes": resources.free_disk_bytes,
-                    },
-                    "routing_memory_gib": effective_memory_gb,
+            if selected is MediaType.IMAGE_TO_VIDEO:
+                try:
+                    _, current = generate_scene_video(
+                        video_provider, store, project_id, current, width=width, height=height, fps=fps
+                    )
+                except (VideoAgentError, ValueError):
+                    if fallback_provider is None:
+                        raise
+                    _, current = generate_scene_video(
+                        fallback_provider, store, project_id, current, width=width, height=height, fps=fps
+                    )
+                    selected = MediaType.IMAGE_MOTION
+                    used_fallback = True
+            elif selected is MediaType.IMAGE_MOTION:
+                motion_provider = fallback_provider if fallback_provider is not None else video_provider
+                _, current = generate_scene_video(
+                    motion_provider, store, project_id, current, width=width, height=height, fps=fps
+                )
+            elif selected is MediaType.TEXT_TO_VIDEO:
+                raise VideoAgentError("text-to-video routing is not implemented by the current project orchestrator")
+            elif current.image_asset is None:
+                raise VideoAgentError(f"scene {current.index} has no image asset for static media")
+
+            current = current.model_copy(
+                update={
+                    "metadata": {
+                        **current.metadata,
+                        "selected_media_type": selected.value,
+                        "media_fallback_used": used_fallback,
+                        "resource_snapshot": {
+                            "total_memory_bytes": resources.total_memory_bytes,
+                            "available_memory_bytes": resources.available_memory_bytes,
+                            "free_disk_bytes": resources.free_disk_bytes,
+                        },
+                        "routing_memory_gib": effective_memory_gb,
+                    }
                 }
-            }
-        )
-        directory = store.project_dir(project_id)
-        store.write_json(directory, f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
-        results.append(SceneMediaResult(current, selected, used_fallback))
+            )
+            directory = store.project_dir(project_id)
+            store.write_json(directory, f"scene-{current.index:04d}.json", current.model_dump(mode="json"))
+            results.append(SceneMediaResult(current, selected, used_fallback))
+    except Exception:
+        _set_project_status(store, project_id, ProjectStatus.FAILED)
+        raise
 
+    _set_project_status(store, project_id, ProjectStatus.ASSETS_READY)
     return results
