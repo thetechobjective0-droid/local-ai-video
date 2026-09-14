@@ -9,6 +9,7 @@ from app.models.scene import MediaType, Scene
 class VideoCapability:
     """Capabilities and conservative limits exposed to the routing layer."""
 
+    image_motion: bool = False
     image_to_video: bool = False
     text_to_video: bool = False
     max_duration_seconds: float = 0.0
@@ -21,12 +22,7 @@ def select_media_type(
     video: VideoCapability,
     available_memory_gb: float | None = None,
 ) -> MediaType:
-    """Select a renderable media mode without using an LLM.
-
-    Preference is honored when the provider can satisfy it. If not, the
-    deterministic fallback chain is used. High-memory video generation is
-    rejected when the available-memory signal is below the configured floor.
-    """
+    """Select a renderable media mode without using an LLM."""
     candidates = [scene.preferred_media_type, scene.fallback_media_type]
     if MediaType.IMAGE_MOTION not in candidates:
         candidates.append(MediaType.IMAGE_MOTION)
@@ -42,7 +38,7 @@ def select_media_type(
                 video, available_memory_gb
             ):
                 return candidate
-        if candidate is MediaType.IMAGE_MOTION:
+        if candidate is MediaType.IMAGE_MOTION and video.image_motion:
             return candidate
         if candidate is MediaType.STATIC_IMAGE:
             return candidate
