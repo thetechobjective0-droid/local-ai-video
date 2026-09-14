@@ -88,8 +88,10 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - subtitle tests explicitly cover deterministic max-character wrapping
 - Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
 - planning worker retries one failed Director run using persisted artifacts before marking the project failed
-- structured-output validation failures now preserve Pydantic field-level diagnostics for repair prompts and persisted job errors
+- structured-output validation failures preserve Pydantic field-level diagnostics for repair prompts and persisted job errors
 - storyboard prompts minimize the LLM contract to required fields and let the application generate UUIDs
+- descriptive lifecycle logging now traces planning submission, configuration, Ollama health/model checks, Director stages, structured-output attempts/repairs, media job transitions, per-scene routing/generation, recovery/fallback decisions, progress and terminal outcomes
+- logs intentionally record operational metadata (stage, model, counts, timings and errors) rather than full user prompts or generated media payloads
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
