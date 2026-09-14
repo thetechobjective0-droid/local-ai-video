@@ -96,12 +96,14 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - storyboard prompts minimize the LLM contract to required fields and let the application generate UUIDs
 - storyboard outputs materialize canonical `scene-XXXX.json` manifests and `timeline.json` after validated planning
 - resumed `storyboard_ready` projects revalidate storyboard timing against the project's target duration before accepting persisted output; stale/invalid timing forces storyboard regeneration instead of silently reusing it
+- stale persisted briefs whose duration differs from the project target are invalidated before storyboard regeneration so the Director pipeline is rebuilt with the requested duration
 - storyboard reconciliation now deterministically persists SRT and WebVTT subtitles from scene narration
 - descriptive lifecycle logging now traces planning submission, configuration, Ollama health/model checks, Director stages, structured-output attempts/repairs, media job transitions, per-scene routing/generation, recovery/fallback decisions, progress and terminal outcomes
 - logs intentionally record operational metadata (stage, model, counts, timings and errors) rather than full user prompts or generated media payloads
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
+- corrected Director script-stage logging to use the actual `Script.estimated_duration_seconds` schema field
 
 ### Design constraints
 
