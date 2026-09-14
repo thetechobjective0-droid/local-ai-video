@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.config import load_config
 from app.models.project import ProjectStatus, VideoProject
 from app.orchestrator.jobs import MediaJobManager, get_job_manager
-from app.orchestrator.planning_jobs import PlanningJobManager, get_planning_job_manager
+from app.orchestrator.planning_jobs import PlanningJob, PlanningJobManager, get_planning_job_manager
 from app.storage.filesystem import FilesystemStore
 
 router = APIRouter()
@@ -20,9 +20,9 @@ class CreateProjectRequest(BaseModel):
 
     model_config = {"extra": "forbid"}
 
-    prompt: str = Field(min_length=1)
-    duration: float = Field(default=60.0, gt=0)
-    style: str = Field(default="cinematic", min_length=1)
+    prompt: str = Field(min_length=1, max_length=20_000)
+    duration: float = Field(default=60.0, gt=0, le=3600)
+    style: str = Field(default="cinematic", min_length=1, max_length=200)
     aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
 
 
@@ -38,18 +38,11 @@ def _planning_manager() -> PlanningJobManager:
     return get_planning_job_manager(_store())
 
 
-def _planning_job_response(store: FilesystemStore, job: Any) -> dict[str, Any]:
-    """Expose planning completion when the durable project is already storyboard-ready.
-
-    A synchronous Resume can finish planning after an older background job has failed.
-    The project status is the authoritative planning result, so the job API must not
-    report a stale failed state over a successfully materialized storyboard.
-    """
+def _planning_job_response(store: FilesystemStore, job: PlanningJob) -> dict[str, Any]:
+    """Expose durable project completion over stale background-job state."""
     project = store.load_project(job.project_id)
     if project.status == ProjectStatus.STORYBOARD_READY and job.state != "completed":
-        job = job.model_copy(
-            update={"state": "completed", "completed_stage": "storyboard", "error": None}
-        )
+        job = job.model_copy(update={"state": "completed", "completed_stage": "storyboard", "error": None})
     return job.model_dump(mode="json")
 
 
@@ -62,10 +55,7 @@ def create_media_job(project_id: UUID) -> dict[str, Any]:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="project not found") from None
     except ValueError as exc:
-        raise HTTPException(
-            status_code=409,
-            detail={"code": "planning_not_ready", "message": str(exc)},
-        ) from exc
+        raise HTTPException(status_code=409, detail={"code": "planning_not_ready", "message": str(exc)}) from exc
     return job.model_dump(mode="json")
 
 
@@ -91,22 +81,11 @@ def create_project_async(request: CreateProjectRequest) -> dict[str, Any]:
     if config.llm.provider != "ollama":
         raise HTTPException(status_code=503, detail="local Ollama provider is required")
 
-    project = VideoProject(
-        source_prompt=request.prompt,
-        duration_seconds=request.duration,
-        aspect_ratio=request.aspect_ratio,
-        style=request.style,
-        quality_profile=config.runtime.profile,
-    )
+    project = VideoProject(source_prompt=request.prompt, duration_seconds=request.duration, aspect_ratio=request.aspect_ratio, style=request.style, quality_profile=config.runtime.profile)
     store = FilesystemStore(config.storage.root)
     directory = store.create_project(project)
     job = _planning_manager().submit(project.id)
-    return {
-        "project_id": str(project.id),
-        "path": str(directory),
-        "job_id": str(job.id),
-        "status": project.status.value,
-    }
+    return {"project_id": str(project.id), "path": str(directory), "job_id": str(job.id), "status": project.status.value}
 
 
 @router.get("/api/projects/{project_id}/planning-job")
