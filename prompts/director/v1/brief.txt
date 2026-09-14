@@ -1,0 +1,5 @@
+Create a creative brief with fields: title, objective, audience, tone, language,
+duration_seconds, and visual_style.
+User idea: {user_prompt}
+Target duration: {duration_seconds}
+Requested style: {style}

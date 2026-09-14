@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 import shutil
+import tempfile
 from typing import Any
 from uuid import UUID
 
@@ -39,17 +40,25 @@ class FilesystemStore:
         self.ensure_capacity()
         directory = self.project_dir(project.id)
         directory.mkdir(parents=True, exist_ok=False)
-        (directory / "project.json").write_text(
-            project.model_dump_json(indent=2), encoding="utf-8"
-        )
+        self.write_json(directory, "project.json", project.model_dump(mode="json"))
         return directory
 
     def write_json(self, directory: Path, filename: str, value: Any) -> Path:
-        """Persist a JSON artifact under an existing project directory."""
+        """Atomically persist a JSON artifact inside an existing project directory."""
+        directory = directory.resolve()
         target = (directory / filename).resolve()
-        if directory.resolve() not in target.parents:
+        if directory not in target.parents:
             raise ValueError("artifact path escapes project directory")
-        target.write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding="utf-8")
+        if not filename or Path(filename).name != filename or Path(filename).suffix != ".json":
+            raise ValueError("artifact filename must be a single .json basename")
+
+        payload = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=directory, prefix=".tmp-", delete=False
+        ) as temp:
+            temp.write(payload)
+            temp_path = Path(temp.name)
+        temp_path.replace(target)
         return target
 
     def load_project(self, project_id: UUID | str) -> VideoProject:

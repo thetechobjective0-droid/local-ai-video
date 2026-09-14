@@ -27,5 +27,24 @@ class Storyboard(BaseModel):
         for scene in ordered:
             if scene.start_seconds < previous_end - 1e-6:
                 raise ValueError("scene intervals must not overlap")
+            if scene.duration_seconds <= 0:
+                raise ValueError("scene duration must be positive")
             previous_end = scene.start_seconds + scene.duration_seconds
         return self
+
+
+def validate_storyboard_duration(
+    storyboard: Storyboard,
+    target_duration_seconds: float,
+    tolerance_seconds: float = 0.5,
+) -> None:
+    """Ensure the storyboard ends at the requested project duration."""
+    if target_duration_seconds <= 0 or tolerance_seconds < 0:
+        raise ValueError("target duration must be positive and tolerance non-negative")
+    end = max(
+        scene.start_seconds + scene.duration_seconds for scene in storyboard.scenes
+    )
+    if abs(end - target_duration_seconds) > tolerance_seconds:
+        raise ValueError(
+            f"storyboard ends at {end:.3f}s; target is {target_duration_seconds:.3f}s"
+        )

@@ -1,0 +1,2 @@
+Create a narration script. Return fields: title, narration, and estimated_duration_seconds.
+Creative brief: {brief}

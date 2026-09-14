@@ -1,0 +1,7 @@
+Create a storyboard JSON object with a scenes array. Each scene must contain id, index,
+start_seconds, duration_seconds, narration, visual_description, image_prompt, and motion_prompt.
+Use contiguous scene indexes starting at 1 and non-overlapping timing. The final scene must end
+at the requested target duration within a small tolerance; do not create unexplained gaps.
+Creative brief: {brief}
+Script: {script}
+Target duration: {duration_seconds}

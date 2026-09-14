@@ -2,6 +2,7 @@
 
 import json
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from app.exceptions import ProviderUnavailableError, VideoAgentError
@@ -9,12 +10,15 @@ from app.providers.base import LLMRequest, LLMResponse
 
 
 class OllamaProvider:
-    """Call only an Ollama server bound to localhost by default."""
+    """Call only an Ollama server bound to an approved local hostname."""
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434") -> None:
+        parsed = urlparse(base_url)
+        if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+            raise ValueError("Ollama provider must use an HTTP localhost endpoint")
+        if parsed.username or parsed.password:
+            raise ValueError("Ollama endpoint must not contain credentials")
         self.base_url = base_url.rstrip("/")
-        if not self.base_url.startswith(("http://127.0.0.1", "http://localhost")):
-            raise ValueError("Ollama provider must use a localhost endpoint")
 
     def health(self, timeout_seconds: float = 2.0) -> tuple[bool, str]:
         """Return availability and a concise diagnostic message."""
