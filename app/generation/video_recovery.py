@@ -1,4 +1,4 @@
-"""Bounded video-generation recovery and deterministic fallback policy."""
+"""Bounded video-generation recovery with deterministic prompt refinement."""
 
 from dataclasses import dataclass
 from uuid import UUID
@@ -20,13 +20,12 @@ class VideoRecoveryResult:
     strategies: tuple[str, ...]
 
 
-def _bounded_duration(duration: float, attempt: int) -> float:
-    """Reduce clip duration conservatively for later attempts."""
-    if attempt == 0:
-        return duration
-    if attempt == 1:
-        return max(1.0, round(duration * 0.75, 3))
-    return max(1.0, round(duration * 0.5, 3))
+def _simplify_motion_prompt(prompt: str) -> str:
+    """Apply a deterministic conservative simplification to a motion prompt."""
+    text = " ".join(prompt.split())
+    if not text:
+        return "Subtle cinematic camera motion with stable subjects and natural movement."
+    return text[:600]
 
 
 def generate_scene_video_with_recovery(
@@ -36,18 +35,25 @@ def generate_scene_video_with_recovery(
     scene: Scene,
     **kwargs: object,
 ) -> VideoRecoveryResult:
-    """Generate scene video with finite duration refinement and provider fallback."""
+    """Generate a scene video with finite prompt refinement and no timing mutation."""
+    original_prompt = scene.motion_prompt
     strategies: list[str] = []
 
     def operation(attempt: int) -> Scene:
-        duration = _bounded_duration(scene.duration_seconds, attempt)
-        current = scene.model_copy(update={"duration_seconds": duration})
         if attempt == 0:
+            current = scene
             strategies.append("original")
         elif attempt == 1:
-            strategies.append("reduced_duration")
+            current = scene.model_copy(update={"motion_prompt": _simplify_motion_prompt(original_prompt)})
+            strategies.append("simplified_motion_prompt")
         else:
-            strategies.append("reduced_duration_aggressive")
+            current = scene.model_copy(
+                update={
+                    "motion_prompt": "Subtle cinematic motion; preserve composition and subject identity.",
+                    "negative_prompt": "",
+                }
+            )
+            strategies.append("conservative_motion_prompt")
         _, updated = generate_scene_video(provider, store, project_id, current, **kwargs)
         return updated
 
