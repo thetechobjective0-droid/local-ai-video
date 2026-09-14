@@ -8,11 +8,13 @@ import typer
 
 from app.config import load_config
 from app.director.project import create_plan, resume_plan
+from app.generation.audio import generate_scene_audio
 from app.generation.images import generate_scene_image
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
 from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.storage.filesystem import FilesystemStore
 
@@ -37,7 +39,9 @@ def _provider_and_store(config_path: Path | None) -> tuple[OllamaProvider, Files
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _image_provider_and_store(config_path: Path | None) -> tuple[DiffusersImageProvider, FilesystemStore]:
+def _image_provider_and_store(
+    config_path: Path | None,
+) -> tuple[DiffusersImageProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
@@ -51,10 +55,21 @@ def _image_provider_and_store(config_path: Path | None) -> tuple[DiffusersImageP
     return provider, FilesystemStore(app_config.storage.root)
 
 
+def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider, FilesystemStore]:
+    app_config = load_config(config_path)
+    configure_logging()
+    if not app_config.runtime.local_only:
+        raise typer.BadParameter("local_only must remain enabled")
+    if app_config.tts.provider != "macos_say":
+        raise typer.BadParameter("only the local macOS Speech provider is supported in Phase 4")
+    provider = MacOSTTSProvider(sample_rate=app_config.tts.sample_rate)
+    return provider, FilesystemStore(app_config.storage.root)
+
+
 def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
     directory = store.project_dir(project_id)
     for path in sorted(directory.glob("scene-*.json")):
-        if path.name.endswith("-image.json"):
+        if path.name.endswith(("-image.json", "-audio.json")):
             continue
         try:
             scene = Scene.model_validate_json(path.read_text(encoding="utf-8"))
@@ -98,7 +113,12 @@ def create(
     app_config = load_config(config)
     provider, store = _provider_and_store(config)
     directory = create_plan(
-        provider, store, prompt, duration, style, aspect_ratio,
+        provider,
+        store,
+        prompt,
+        duration,
+        style,
+        aspect_ratio,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         top_p=app_config.llm.top_p,
@@ -117,7 +137,9 @@ def resume(
     app_config = load_config(config)
     provider, store = _provider_and_store(config)
     directory = resume_plan(
-        provider, store, project_id,
+        provider,
+        store,
+        project_id,
         model=app_config.llm.model,
         temperature=app_config.llm.temperature,
         top_p=app_config.llm.top_p,
@@ -152,3 +174,26 @@ def generate_scene(
         seed=seed,
     )
     typer.echo(f"Generated image artifact: {artifact.id}")
+
+
+@app.command("generate-audio")
+def generate_audio(
+    project_id: str,
+    scene_id: str,
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Generate one scene narration track using local macOS Speech."""
+    app_config = load_config(config)
+    provider, store = _tts_provider_and_store(config)
+    project_uuid = UUID(project_id)
+    scene_uuid = UUID(scene_id)
+    scene = _load_scene(store, project_uuid, scene_uuid)
+    artifact, _ = generate_scene_audio(
+        provider,
+        store,
+        project_uuid,
+        scene,
+        voice=app_config.tts.voice,
+        rate=app_config.tts.rate,
+    )
+    typer.echo(f"Generated audio artifact: {artifact.id}")
