@@ -47,7 +47,9 @@ def _planning_job_response(store: FilesystemStore, job: Any) -> dict[str, Any]:
     """
     project = store.load_project(job.project_id)
     if project.status == ProjectStatus.STORYBOARD_READY and job.state != "completed":
-        job = job.model_copy(update={"state": "completed", "completed_stage": "storyboard", "error": None})
+        job = job.model_copy(
+            update={"state": "completed", "completed_stage": "storyboard", "error": None}
+        )
     return job.model_dump(mode="json")
 
 
