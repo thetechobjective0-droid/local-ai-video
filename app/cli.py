@@ -12,10 +12,12 @@ from app.generation.audio import generate_scene_audio
 from app.generation.images import generate_scene_image
 from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
+from app.generation.video import generate_scene_video
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
 from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.ffmpeg_video import FFmpegVideoProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.render.ffmpeg import FFmpegRenderer
@@ -64,10 +66,21 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
     return provider, FilesystemStore(app_config.storage.root)
 
 
+def _video_provider_and_store(config_path: Path | None) -> tuple[FFmpegVideoProvider, FilesystemStore]:
+    app_config = load_config(config_path)
+    configure_logging()
+    if not app_config.runtime.local_only:
+        raise typer.BadParameter("local_only must remain enabled")
+    if app_config.video.provider != "ffmpeg_ken_burns":
+        raise typer.BadParameter("only the deterministic local FFmpeg video provider is supported in Phase 7")
+    provider = FFmpegVideoProvider()
+    return provider, FilesystemStore(app_config.storage.root)
+
+
 def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
     directory = store.project_dir(project_id)
     for path in sorted(directory.glob("scene-*.json")):
-        if path.name.endswith(("-image.json", "-audio.json")):
+        if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
             scene = Scene.model_validate_json(path.read_text(encoding="utf-8"))
@@ -82,7 +95,7 @@ def _load_scenes(store: FilesystemStore, project_id: UUID) -> list[Scene]:
     directory = store.project_dir(project_id)
     scenes: list[Scene] = []
     for path in sorted(directory.glob("scene-*.json")):
-        if path.name.endswith(("-image.json", "-audio.json")):
+        if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
             scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
@@ -208,6 +221,29 @@ def generate_audio(
         rate=app_config.tts.rate,
     )
     typer.echo(f"Generated audio artifact: {artifact.id}")
+
+
+@app.command("generate-video")
+def generate_video(
+    project_id: str,
+    scene_id: str,
+    seed: int | None = typer.Option(None, "--seed"),
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Generate one scene motion clip using the configured local video provider."""
+    app_config = load_config(config)
+    provider, store = _video_provider_and_store(config)
+    project_uuid = UUID(project_id)
+    scene = _load_scene(store, project_uuid, UUID(scene_id))
+    artifact, _ = generate_scene_video(
+        provider,
+        store,
+        project_uuid,
+        scene,
+        fps=app_config.video.fps,
+        seed=seed,
+    )
+    typer.echo(f"Generated video artifact: {artifact.id}")
 
 
 @app.command("subtitles")
