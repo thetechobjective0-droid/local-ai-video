@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in a persistent, JSON-backed local worker with browser status polling. No cloud queue or external service is used.
+**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. No cloud queue or external service is used.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -28,11 +28,13 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - persisted SRT/WebVTT subtitle endpoints
 - final video player
 - explicit safe project-relative artifact path handling
+- asynchronous project creation: filesystem metadata is returned immediately while Ollama planning runs in a local background worker
+- planning job status endpoint
 - API/UI launch and operational documentation
 
 ### Deferred by design
 
-- background job state and asynchronous execution (delivered in Phase 12)
+- background media job state and asynchronous execution (delivered in Phase 12)
 - frontend build tooling
 
 ---
@@ -44,7 +46,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 ### Delivered
 
 - persistent local JSON job manifests under the configured storage root
-- job lifecycle states: `queued → running → completed/failed`
+- media job lifecycle states: `queued → running → completed/failed`
 - `interrupted` state for jobs found active after process restart
 - single-worker local `ThreadPoolExecutor` to bound resource contention
 - worker delegates to existing `generate_project_media`; no generation logic is duplicated
@@ -58,23 +60,26 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - browser background-generation control
 - 2-second job polling and automatic artifact refresh on terminal state
 - stale queued/running jobs are marked `interrupted` on process restart
+- persistent local planning job manifests under `planning-jobs`
+- planning worker uses one local worker to avoid competing for unified memory with media generation
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
-- `run.sh` main-branch launcher that updates `main`, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
+- `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
 
 ### Design constraints
 
-The worker is intentionally process-local. There is no Redis, Celery, cloud queue, remote inference, telemetry, or upload path. One worker is the default to prevent uncontrolled unified-memory pressure on the target Apple M4 / 36 GB machine.
+The workers are intentionally process-local. There is no Redis, Celery, cloud queue, remote inference, telemetry, or upload path. One worker per job manager is the default to prevent uncontrolled unified-memory pressure on the target Apple M4 / 36 GB machine.
 
 ### Acceptance target
 
 ```text
-Browser -> localhost API -> persistent local job manifest
-                         -> local worker -> existing media orchestrator
+Browser -> localhost API -> persistent local project/job manifests
+                         -> local planning worker -> Ollama -> Director artifacts
+                         -> local media worker -> existing media orchestrator
                          -> project/artifact store
 ```
 
-The job layer owns scheduling and lifecycle state only. The existing media orchestration layer remains responsible for provider routing, recovery, caching, artifact persistence and project status.
+The job layers own scheduling and lifecycle state only. The existing Director and media orchestration layers remain responsible for validation, provider routing, recovery, caching, artifact persistence and project status.
 
 ### Machine acceptance still pending
 
