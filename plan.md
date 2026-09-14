@@ -23,18 +23,18 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
 | 4 | Local macOS TTS | IMPLEMENTED |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
-| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED |
+| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment hardened |
 | 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE |
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED |
-| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; target-machine acceptance |
-| 13 | Target-machine acceptance harness | **IMPLEMENTED; real M4 run pending** |
+| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened |
+| 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
 | 14 | Semantic/visual evaluation | NEXT |
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
-| 17 | Security/locality hardening | PLANNED |
+| 17 | Security/locality hardening | IN PROGRESS; renderer/job path hardening started |
 | 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Phases 0–12 — implemented foundation
 
-The repository now contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, and final-video gating.
+The repository contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, and final-video gating.
 
 The job layer owns scheduling/lifecycle only. Director, media generation, provider, recovery, QA, artifact persistence and rendering services remain the authoritative implementation boundaries.
 
@@ -53,21 +53,7 @@ The job layer owns scheduling/lifecycle only. Director, media generation, provid
 
 **Implemented in main.**
 
-`app/acceptance.py` provides:
-
-- local-only configuration check;
-- macOS / Apple Silicon checks;
-- FFmpeg and FFprobe readiness;
-- local Diffusers model metadata/weight readiness;
-- MPS availability check;
-- model-load timing;
-- real scene image generation timing;
-- real configured video-provider model-load timing when applicable;
-- real scene-video generation timing;
-- resource snapshots before/after the run;
-- deterministic project QA;
-- final FFmpeg render and final QA;
-- machine-readable JSON report.
+`app/acceptance.py` provides local-only/platform/tool/model readiness checks, MPS readiness, model-load timing, real scene image generation timing, real configured video-provider model-load timing when applicable, real scene-video generation timing, before/after resource snapshots, deterministic project QA, final FFmpeg render/final QA, and a machine-readable JSON report.
 
 CLI:
 
@@ -77,46 +63,37 @@ uv run video-agent acceptance --project-id <PROJECT_ID>
 uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance-report.json
 ```
 
-`--no-media` is readiness-only and does not claim hardware acceptance. A full acceptance run must execute actual local model inference on the target M4.
-
-CI tests cover the acceptance report/readiness logic without downloading model weights.
+`--no-media` is readiness-only. A full acceptance run must execute actual local model inference on the target M4. CI covers the readiness/report logic without downloading model weights.
 
 ## Phase 14 — Semantic / visual evaluation
 
-Implement evaluation beyond hard media integrity:
-
-- prompt-to-image alignment;
-- storyboard-to-media consistency;
-- I2V motion quality;
-- narration/script alignment;
-- adjacent-scene visual continuity;
-- final-video evaluation protocol.
-
-Evaluation reports must be separate from deterministic QA. Semantic scores cannot override hard integrity failures, and automated refinement must remain bounded and auditable.
+Implement evaluation beyond hard media integrity: prompt-to-image alignment, storyboard-to-media consistency, I2V motion quality, narration/script alignment, adjacent-scene visual continuity, and final-video evaluation. Keep evaluation reports separate from deterministic QA; semantic scores cannot override hard integrity failures.
 
 ## Phase 15 — Advanced recovery/refinement
 
-Use real failure data from Phase 13/14 to add structured failure classification, resource-aware prompt/settings refinement, selective regeneration, dependency-aware invalidation, per-job/project recovery budgets, and persistent recovery history. No infinite retries or uncontrolled policy escalation.
+Use real failure data to add structured failure classification, resource-aware prompt/settings refinement, selective regeneration, dependency-aware invalidation, per-job/project recovery budgets, and persistent recovery history. No infinite retries or uncontrolled policy escalation.
 
 ## Phase 16 — Provider/model registry
 
-Centralize provider/model profiles, compatibility checks, health/readiness contracts, hardware-class selection, deterministic fallback graphs, and provider compatibility tests without duplicating orchestration paths.
+Centralize provider/model profiles, compatibility checks, health/readiness contracts, hardware-class selection, deterministic fallback graphs, provider-specific configuration isolation, and compatibility tests.
 
 ## Phase 17 — Security/locality hardening
 
-Audit and test filesystem containment, symlinks/path traversal, request/payload limits, prompt/manifest validation, subprocess arguments, loopback binding, local-only inference boundaries, secrets/config handling, malformed artifacts, and dependency security.
+**In progress.** Renderer artifact resolution now rejects absolute/relative paths that resolve outside the project directory. Planning-job paths now have the same storage-root containment check, and stale `queued`/`running` planning jobs are persisted as `interrupted` after process restart.
+
+Remaining work includes the full filesystem/path/symlink audit, HTTP input-size limits, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
 
 Security invariant: malformed input must never become arbitrary filesystem access, subprocess execution, remote upload, or uncontrolled resource consumption.
 
 ## Phase 18 — Testing and CI/CD
 
-Expand from the current unit/integration/API/job/end-to-end deterministic coverage to explicit provider contract tests, failure-injection tests, security regression tests, migration tests, and hardware acceptance tests that are intentionally excluded from standard model-free CI.
+Expand current unit/integration/API/job/end-to-end deterministic coverage to explicit provider contract tests, failure-injection tests, security regression tests, migration tests, and hardware acceptance tests intentionally excluded from standard model-free CI.
 
 Required regressions include retry exhaustion, malformed LLM output, stale artifacts/briefs, timeline errors, hash mismatch, unavailable providers, memory gates, cache boundaries, restart recovery, traversal attacks, invalid API transitions, and invalid final MP4s.
 
 ## Phase 19 — Observability
 
-Complete structured lifecycle events, stage/job/project correlation, generation timing, provider/model/device metadata, resource snapshots, failure classification, acceptance aggregation, privacy-preserving debug diagnostics, and log retention/rotation.
+Complete structured lifecycle events, stage/job/project correlation, generation timing, provider/model/device metadata, resource snapshots, failure classification, acceptance aggregation, privacy-preserving diagnostics, and log retention/rotation.
 
 ## Phase 20 — Persistence evolution
 
@@ -130,7 +107,7 @@ Optimize for reliable local production rather than theoretical model size.
 
 ## Phase 22 — V1 production gate
 
-V1 requires a complete local workflow: brief → storyboard → scene media → bounded recovery → deterministic QA → final MP4 → dashboard playback → restart/resume → reproducible persisted project. V1 is not complete until target M4/model/resource acceptance and representative end-to-end projects pass.
+V1 requires the complete local workflow: brief → storyboard → scene media → bounded recovery → deterministic QA → final MP4 → dashboard playback → restart/resume → reproducible persisted project. V1 is not complete until target M4/model/resource acceptance and representative end-to-end projects pass.
 
 ## Phases 23–24
 
@@ -149,7 +126,7 @@ real M4 model/media acceptance  [TARGET MACHINE]
         ↓
 16 provider/model registry
         ↓
-17 security hardening
+17 security hardening  [IN PROGRESS]
         ↓
 18 test/CI expansion
         ↓
@@ -166,7 +143,7 @@ real M4 model/media acceptance  [TARGET MACHINE]
 
 ## Immediate machine blocker
 
-The current target-M4 runtime previously failed because the configured SDXL directory was empty. The application correctly failed locally rather than downloading remotely. Once the Hugging Face SDXL download completes, run the Phase 13 full acceptance command against a storyboard-ready project.
+The target-M4 runtime previously failed because the configured SDXL directory was empty. The application correctly failed locally rather than downloading remotely. Once the Hugging Face SDXL download completes, run the Phase 13 full acceptance command against a storyboard-ready project.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
