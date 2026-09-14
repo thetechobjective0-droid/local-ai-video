@@ -1,6 +1,8 @@
 """Generate and persist one motion-video artifact for an individual scene."""
 
 import hashlib
+import json
+from pathlib import Path
 from uuid import UUID
 
 from app.exceptions import VideoAgentError
@@ -30,19 +32,24 @@ def generate_scene_video(
     if not image_manifest.is_file():
         raise VideoAgentError(f"scene image manifest not found: {image_manifest}")
     try:
-        image_data = store.read_json(image_manifest)
-    except (OSError, ValueError) as exc:
+        image_data = json.loads(image_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
         raise VideoAgentError("scene image manifest is invalid") from exc
-    image_path = image_data.get("path")
-    if not isinstance(image_path, str):
+    image_path_value = image_data.get("path")
+    if not isinstance(image_path_value, str):
         raise VideoAgentError("scene image manifest has no valid path")
+    image_path = Path(image_path_value)
+    if not image_path.is_absolute():
+        image_path = (directory / image_path).resolve()
+    if directory.resolve() not in image_path.parents:
+        raise VideoAgentError("scene image path escapes project directory")
 
     videos_dir = directory / "videos"
     videos_dir.mkdir(parents=True, exist_ok=True)
     output = videos_dir / f"scene-{scene.index:04d}.mp4"
     result = provider.generate(
         VideoGenerationRequest(
-            image_path=directory / image_path if not image_path.startswith("/") else __import__("pathlib").Path(image_path),
+            image_path=image_path,
             output_path=output,
             prompt=scene.motion_prompt,
             negative_prompt=scene.negative_prompt,
