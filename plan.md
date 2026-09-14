@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. No cloud queue or external service is used.
+**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. Media submission is now explicitly gated on planning completion so the dashboard cannot race the storyboard worker.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -35,6 +35,8 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - QA endpoint serializes the dataclass report correctly for FastAPI JSON responses
 - API/UI launch and operational documentation
 - launcher displays the actual loopback port used by Uvicorn (`8765`)
+- media generation control remains disabled until the project reaches `storyboard_ready`
+- media submission returns HTTP 409 with a structured `planning_not_ready` error when called before scenes exist
 
 ### Deferred by design
 
@@ -59,6 +61,8 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - API submission/status/list endpoints
 - HTTP 202 submission semantics
 - browser background-generation control
+- media generation is gated until asynchronous planning has produced a storyboard
+- premature media submission is reported as a resource-state conflict (`409`) rather than request validation failure (`422`)
 - 2-second job polling and automatic artifact refresh on terminal state
 - stale queued/running jobs are marked `interrupted` on process restart
 - persistent local planning job manifests under `planning-jobs`
