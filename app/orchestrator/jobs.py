@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 from threading import Lock
+from typing import List
 from uuid import UUID, uuid4
 import tempfile
 
@@ -93,7 +94,7 @@ class MediaJobManager:
             raise FileNotFoundError(str(job_id))
         return MediaJob.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
-    def list(self, project_id: UUID | None = None) -> list[MediaJob]:
+    def list(self, project_id: UUID | None = None) -> List[MediaJob]:
         jobs_dir = self.store.root / "jobs"
         result: list[MediaJob] = []
         for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
