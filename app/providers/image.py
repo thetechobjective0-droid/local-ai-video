@@ -3,7 +3,6 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
-from uuid import UUID
 
 
 @dataclass(frozen=True)
