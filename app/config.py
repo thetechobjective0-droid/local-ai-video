@@ -45,7 +45,11 @@ class TTSConfig(BaseModel):
 class VideoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: str = "ffmpeg_ken_burns"
+    model_path: Path | None = None
     device: str = Field(default="mps", pattern="^(mps|cpu)$")
+    dtype: str = Field(default="float16", pattern="^(float16|bfloat16|float32)$")
+    width: int = Field(default=704, ge=64, multiple_of=32)
+    height: int = Field(default=384, ge=64, multiple_of=32)
     fps: int = Field(default=16, ge=1, le=60)
 
 
