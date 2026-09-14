@@ -1,6 +1,7 @@
 """Safe filesystem-backed project storage."""
 
 from pathlib import Path
+import shutil
 from uuid import UUID
 
 from app.exceptions import InsufficientDiskError
@@ -24,9 +25,7 @@ class FilesystemStore:
 
     def ensure_capacity(self, required_bytes: int = 0) -> None:
         """Fail before generation if free space is below the configured safety floor."""
-        usage = self.root.stat().st_dev
-        del usage
-        free_bytes = __import__("shutil").disk_usage(self.root).free
+        free_bytes = shutil.disk_usage(self.root).free
         if free_bytes < self.minimum_free_bytes + required_bytes:
             raise InsufficientDiskError(
                 f"insufficient disk space: {free_bytes} bytes free, "
