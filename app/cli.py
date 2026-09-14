@@ -10,6 +10,8 @@ from app.config import load_config
 from app.director.project import create_plan, resume_plan
 from app.generation.audio import generate_scene_audio
 from app.generation.images import generate_scene_image
+from app.generation.subtitles import build_subtitles
+from app.generation.timeline import build_timeline
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
@@ -39,19 +41,14 @@ def _provider_and_store(config_path: Path | None) -> tuple[OllamaProvider, Files
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _image_provider_and_store(
-    config_path: Path | None,
-) -> tuple[DiffusersImageProvider, FilesystemStore]:
+def _image_provider_and_store(config_path: Path | None) -> tuple[DiffusersImageProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
         raise typer.BadParameter("local_only must remain enabled")
     if app_config.image.provider != "diffusers":
         raise typer.BadParameter("only the local Diffusers image provider is supported in Phase 3")
-    provider = DiffusersImageProvider(
-        app_config.image.model_path,
-        device=app_config.image.device,
-    )
+    provider = DiffusersImageProvider(app_config.image.model_path, device=app_config.image.device)
     return provider, FilesystemStore(app_config.storage.root)
 
 
@@ -78,6 +75,21 @@ def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Sce
         if scene.id == scene_id:
             return scene
     raise typer.BadParameter(f"scene not found: {scene_id}")
+
+
+def _load_scenes(store: FilesystemStore, project_id: UUID) -> list[Scene]:
+    directory = store.project_dir(project_id)
+    scenes: list[Scene] = []
+    for path in sorted(directory.glob("scene-*.json")):
+        if path.name.endswith(("-image.json", "-audio.json")):
+            continue
+        try:
+            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+    if not scenes:
+        raise typer.BadParameter(f"no scenes found: {project_id}")
+    return scenes
 
 
 @app.command()
@@ -159,8 +171,7 @@ def generate_scene(
     app_config = load_config(config)
     provider, store = _image_provider_and_store(config)
     project_uuid = UUID(project_id)
-    scene_uuid = UUID(scene_id)
-    scene = _load_scene(store, project_uuid, scene_uuid)
+    scene = _load_scene(store, project_uuid, UUID(scene_id))
     artifact, _ = generate_scene_image(
         provider,
         store,
@@ -186,8 +197,7 @@ def generate_audio(
     app_config = load_config(config)
     provider, store = _tts_provider_and_store(config)
     project_uuid = UUID(project_id)
-    scene_uuid = UUID(scene_id)
-    scene = _load_scene(store, project_uuid, scene_uuid)
+    scene = _load_scene(store, project_uuid, UUID(scene_id))
     artifact, _ = generate_scene_audio(
         provider,
         store,
@@ -197,3 +207,35 @@ def generate_audio(
         rate=app_config.tts.rate,
     )
     typer.echo(f"Generated audio artifact: {artifact.id}")
+
+
+@app.command("subtitles")
+def subtitles(
+    project_id: str,
+    max_chars: int = typer.Option(48, "--max-chars", min=1),
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Generate deterministic SRT and WebVTT subtitles for a project."""
+    store = FilesystemStore(load_config(config).storage.root)
+    project_uuid = UUID(project_id)
+    outputs = build_subtitles(store, project_uuid, _load_scenes(store, project_uuid), max_chars=max_chars)
+    for format_name, path in outputs.items():
+        typer.echo(f"Generated {format_name}: {path}")
+
+
+@app.command("timeline")
+def timeline(
+    project_id: str,
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Build and persist the deterministic timeline manifest."""
+    store = FilesystemStore(load_config(config).storage.root)
+    project_uuid = UUID(project_id)
+    project = store.load_project(project_uuid)
+    result = build_timeline(store, project, _load_scenes(store, project_uuid))
+    typer.echo(f"Generated timeline: {store.project_dir(project_uuid) / 'timeline.json'}")
+    typer.echo(f"Scenes: {len(result.scenes)}")
+
+
+if __name__ == "__main__":
+    app()
