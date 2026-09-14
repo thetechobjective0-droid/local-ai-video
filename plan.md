@@ -1,748 +1,177 @@
 # Local AI Video Generator — Complete Engineering Roadmap
 
-## 0. Purpose and product boundary
+Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 36 GB unified memory.
 
-Build a **local-first AI video production system** for Apple Silicon, initially targeting an Apple M4 with 36 GB unified memory.
+## Architecture invariants
 
-The system takes a natural-language video brief and turns it into a validated, editable, reproducible video project:
-
-```text
-User brief
-   ↓
-Local LLM / Director
-   ↓
-Validated project + storyboard
-   ↓
-Scene media generation
-   ├── local image generation
-   ├── local narration
-   └── local image-to-video / deterministic motion
-   ↓
-Timeline + subtitles
-   ↓
-Deterministic QA
-   ↓
-FFmpeg render
-   ↓
-Validated final.mp4
-```
-
-### Non-negotiable architecture constraints
-
-- Local inference only.
-- No automatic cloud inference, upload, telemetry, or remote media processing.
-- GitHub is source control only.
-- The LLM coordinates and proposes structured intent; deterministic application code validates, routes, executes, persists, and renders.
-- Provider-specific implementations stay behind typed provider contracts.
-- Filesystem paths are project-relative and containment checked.
-- FFmpeg subprocesses use safe argv construction rather than shell interpolation.
-- Retries are finite and policy-driven; there are no unbounded autonomous loops.
+- Local inference and media processing only; no automatic cloud inference, uploads, telemetry, or remote processing.
+- LLM proposes structured intent; deterministic application code validates, routes, executes, persists, QA-checks, and renders.
+- Typed provider contracts isolate model/runtime implementations.
+- Project-relative filesystem boundaries and safe FFmpeg argv construction are mandatory.
+- Recovery is finite and policy-driven; no unbounded autonomous retries.
 - Model weights, generated media, caches, secrets, and machine state are never committed.
-- Heavy ML dependencies remain optional so CI can validate the application without downloading model weights.
-- Resource-aware concurrency is intentionally conservative for the M4/36 GB target.
+- Heavy ML dependencies remain optional for normal CI.
+- M4 resource concurrency is conservative by default.
 
----
+## Phase status
 
-# Phase 0 — Foundation and Local Runtime
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED |
+| 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
+| 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED |
+| 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
+| 4 | Local macOS TTS | IMPLEMENTED |
+| 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
+| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED |
+| 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE |
+| 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
+| 9 | Deterministic project/media QA | COMPLETE |
+| 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
+| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED |
+| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; target-machine acceptance |
+| 13 | Target-machine acceptance harness | **IMPLEMENTED; real M4 run pending** |
+| 14 | Semantic/visual evaluation | NEXT |
+| 15 | Advanced recovery/refinement | PLANNED |
+| 16 | Provider/model registry evolution | PLANNED |
+| 17 | Security/locality hardening | PLANNED |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED |
+| 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
+| 20 | Persistence/schema migrations | PLANNED |
+| 21 | M4 performance/resource optimization | PLANNED; depends on measurements |
+| 22 | V1 production gate | PLANNED |
+| 23 | V2 advanced production features | FUTURE |
+| 24 | V3 platform evolution/research | FUTURE |
 
-**Status: IMPLEMENTED**
+## Phases 0–12 — implemented foundation
 
-### Scope
+The repository now contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, and final-video gating.
 
-- Python package foundation using Pydantic and Typer.
-- Validated local YAML configuration.
-- Fast/Balanced/Quality runtime profiles.
-- Structured logging with project/run/stage correlation.
-- Domain exceptions for provider, disk, memory, and application failures.
-- Safe filesystem project store with path-containment checks.
-- Persistent JSON project manifests and validated round trips.
-- Disk-space safety preflight.
-- Physical memory and disk resource snapshots.
-- Apple Silicon and Python runtime detection.
-- FFmpeg executable detection.
-- Ollama reachability and local-model checks.
-- `health` and `doctor` CLI commands.
-- Ignore rules for generated assets, models, caches, secrets, and machine state.
+The job layer owns scheduling/lifecycle only. Director, media generation, provider, recovery, QA, artifact persistence and rendering services remain the authoritative implementation boundaries.
 
-### Acceptance
+## Phase 13 — Target-machine acceptance harness
 
-Development quality checks and live local prerequisite checks pass on the target machine.
+**Implemented in main.**
 
----
+`app/acceptance.py` provides:
 
-# Phase 1 — Domain Model and Project Contracts
+- local-only configuration check;
+- macOS / Apple Silicon checks;
+- FFmpeg and FFprobe readiness;
+- local Diffusers model metadata/weight readiness;
+- MPS availability check;
+- model-load timing;
+- real scene image generation timing;
+- real configured video-provider model-load timing when applicable;
+- real scene-video generation timing;
+- resource snapshots before/after the run;
+- deterministic project QA;
+- final FFmpeg render and final QA;
+- machine-readable JSON report.
 
-**Status: IMPLEMENTED**
+CLI:
 
-### Scope
-
-Establish the durable domain boundary used by every later phase:
-
-- `Project` model.
-- `Scene` model.
-- Artifact and media references.
-- Generation-run metadata.
-- Typed project status/lifecycle states.
-- Stable UUID identifiers generated by application code.
-- Project target duration, aspect ratio, resolution, FPS, style and quality profile.
-- Scene visual prompt, negative prompt, motion intent, narration and timing fields.
-- Schema validation and serialization boundaries.
-- Backward-compatible persistence expectations.
-
-### Principle
-
-The Director never owns persistence format details and providers never own domain lifecycle decisions.
-
----
-
-# Phase 2 — Local Director / Story Planning
-
-**Status: IMPLEMENTED**
-
-### Scope
-
-Build the local Ollama-driven Director as a staged, resumable planning pipeline:
-
-```text
-Brief
- ↓
-Concept / brief normalization
- ↓
-Script
- ↓
-Storyboard
- ↓
-Canonical scene manifests + timeline
+```bash
+uv run video-agent acceptance --no-media
+uv run video-agent acceptance --project-id <PROJECT_ID>
+uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance-report.json
 ```
 
-### Delivered
+`--no-media` is readiness-only and does not claim hardware acceptance. A full acceptance run must execute actual local model inference on the target M4.
 
-- Ollama provider behind a typed LLM contract.
-- Prompt templates and structured-output contracts.
-- Pydantic validation of every model response.
-- Bounded structured-output repair.
-- Persisted intermediate artifacts.
-- Resume support from the first incomplete/invalid stage.
-- Explicit project target duration as the duration contract.
-- Application-generated scene UUIDs rather than asking the LLM to manufacture IDs.
-- Canonical `scene-XXXX.json` and `timeline.json` materialization.
-- Validation of storyboard timing against project duration.
-- Invalidation of stale briefs when the requested project duration changes.
-- Planning retries using persisted artifacts.
-- Structured diagnostics retained for repair prompts and job errors.
+CI tests cover the acceptance report/readiness logic without downloading model weights.
 
-### Acceptance
+## Phase 14 — Semantic / visual evaluation
 
-A natural-language brief can produce a validated storyboard without media generation, and an interrupted planning run can resume deterministically.
+Implement evaluation beyond hard media integrity:
 
----
+- prompt-to-image alignment;
+- storyboard-to-media consistency;
+- I2V motion quality;
+- narration/script alignment;
+- adjacent-scene visual continuity;
+- final-video evaluation protocol.
 
-# Phase 3 — Local Image Generation
+Evaluation reports must be separate from deterministic QA. Semantic scores cannot override hard integrity failures, and automated refinement must remain bounded and auditable.
 
-**Status: IMPLEMENTED — M4 MODEL ACCEPTANCE PENDING**
+## Phase 15 — Advanced recovery/refinement
 
-### Scope
+Use real failure data from Phase 13/14 to add structured failure classification, resource-aware prompt/settings refinement, selective regeneration, dependency-aware invalidation, per-job/project recovery budgets, and persistent recovery history. No infinite retries or uncontrolled policy escalation.
 
-- Provider-agnostic `ImageProvider` protocol.
-- Typed image generation request/result contracts.
-- Local Diffusers text-to-image backend.
-- Apple MPS execution.
-- CPU fallback.
-- `local_files_only=True` model loading.
-- Prompt/negative-prompt propagation.
-- Configurable dimensions, steps, guidance scale and seed.
-- PNG validation and SHA-256 integrity checks.
-- Persistent image artifact metadata.
-- Scene image generation CLI.
-- Optional image dependency group.
+## Phase 16 — Provider/model registry
 
-### Hardware gate
+Centralize provider/model profiles, compatibility checks, health/readiness contracts, hardware-class selection, deterministic fallback graphs, and provider compatibility tests without duplicating orchestration paths.
 
-Run a real local model on the M4 and measure load time, generation latency, memory pressure, dimensions and artifact integrity before treating a model/profile as accepted.
+## Phase 17 — Security/locality hardening
 
----
+Audit and test filesystem containment, symlinks/path traversal, request/payload limits, prompt/manifest validation, subprocess arguments, loopback binding, local-only inference boundaries, secrets/config handling, malformed artifacts, and dependency security.
 
-# Phase 4 — Local Narration / TTS
+Security invariant: malformed input must never become arbitrary filesystem access, subprocess execution, remote upload, or uncontrolled resource consumption.
 
-**Status: IMPLEMENTED**
+## Phase 18 — Testing and CI/CD
 
-### Scope
+Expand from the current unit/integration/API/job/end-to-end deterministic coverage to explicit provider contract tests, failure-injection tests, security regression tests, migration tests, and hardware acceptance tests that are intentionally excluded from standard model-free CI.
 
-- Provider-agnostic `TTSProvider` protocol.
-- Typed TTS request/result contracts.
-- macOS built-in Speech (`say`) provider.
-- Configurable voice, rate and sample rate.
-- Scene narration synthesis.
-- WAV integrity and duration validation.
-- SHA-256 verification.
-- Persistent audio artifact metadata.
-- Scene audio linkage.
-- CLI generation command.
-- CI-safe fake-provider tests.
+Required regressions include retry exhaustion, malformed LLM output, stale artifacts/briefs, timeline errors, hash mismatch, unavailable providers, memory gates, cache boundaries, restart recovery, traversal attacks, invalid API transitions, and invalid final MP4s.
 
-### Hardware acceptance
+## Phase 19 — Observability
 
-Verify real narration output, duration, stream validity and persisted metadata on macOS.
+Complete structured lifecycle events, stage/job/project correlation, generation timing, provider/model/device metadata, resource snapshots, failure classification, acceptance aggregation, privacy-preserving debug diagnostics, and log retention/rotation.
 
----
+## Phase 20 — Persistence evolution
 
-# Phase 5 — Timeline and Subtitles
+Add explicit schema versions and migrations, compatibility readers, corruption detection, migration tests, pre-migration snapshots, and project/job/artifact compatibility rules. Keep the filesystem unless measurements prove a database is required.
 
-**Status: IMPLEMENTED**
+## Phase 21 — M4 optimization
 
-### Scope
+Use real acceptance measurements to tune cold/warm model load, unified-memory peak/steady state, CPU/MPS utilization, disk I/O, thermal behavior, resolution/steps/FPS profiles, concurrency, cache effectiveness, memory cleanup, and long-running stability.
 
-- Typed `Timeline` and `TimelineScene` models.
-- Deterministic scene ordering.
-- Overlap and duration-overflow validation.
-- Persisted `timeline.json`.
-- Deterministic scene-level subtitle generation.
-- Proportional cue timing when word timestamps are unavailable.
-- Configurable subtitle line width.
-- SRT and WebVTT output.
-- CLI commands for timeline/subtitles.
+Optimize for reliable local production rather than theoretical model size.
 
-### Boundary
+## Phase 22 — V1 production gate
 
-Timeline is the deterministic intermediate representation consumed by rendering. Provider-specific timing enhancements can be added later without changing the subtitle boundary.
+V1 requires a complete local workflow: brief → storyboard → scene media → bounded recovery → deterministic QA → final MP4 → dashboard playback → restart/resume → reproducible persisted project. V1 is not complete until target M4/model/resource acceptance and representative end-to-end projects pass.
 
----
+## Phases 23–24
 
-# Phase 6 — Deterministic FFmpeg Rendering
+After V1 stability, consider richer transitions/camera controls/subtitles/audio layers/editing/templates/batch workflows, then longer-term multi-model orchestration, pluggable runtimes, richer interchange/evaluation, and optional indexing/database evolution. These must preserve the local-first architecture.
 
-**Status: IMPLEMENTED**
-
-### Scope
-
-- Dedicated `FFmpegRenderer` adapter.
-- Safe argv-based subprocess execution.
-- Resolution/FPS normalization.
-- Scene concatenation through `filter_complex`.
-- Per-scene narration and silent fallback.
-- H.264/AAC MP4 output.
-- `final.mp4`, `render.json`, and final-video metadata.
-- SHA-256 output verification.
-- FFprobe post-render validation.
-- Validation of streams, duration, resolution and FPS.
-- Unit coverage for command construction and artifact persistence.
-
-### Acceptance target
-
-A local 30–60 second project composed of scene media and narration renders to a valid H.264/AAC MP4.
-
----
-
-# Phase 7 — AI Image-to-Video Provider
-
-**Status: IMPLEMENTED — M4 MODEL ACCEPTANCE PENDING**
-
-### Scope
-
-- Typed `VideoProvider` protocol.
-- Deterministic FFmpeg Ken Burns provider as fallback.
-- Local AI image-to-video provider.
-- Selected initial model: LTX-Video 2B distilled.
-- MPS/CPU execution and float16 support.
-- Frame-count conversion for LTX constraints.
-- Motion-prompt propagation.
-- MP4 output and SHA-256 verification.
-- Provider/model/device/frame metadata.
-- Provider capability metadata.
-
-### Hardware gate
-
-Measure model loading, unified-memory pressure, clip generation time, output dimensions/FPS/duration, temporal quality and failure behavior under memory pressure.
-
----
-
-# Phase 8 — Scene Media Strategy, Resource Awareness and Caching
-
-**Status: IMPLEMENTED — EXPANSION REMAINS
-
-### Scope
-
-- Central provider capability registry.
-- Deterministic media-type selection.
-- Scene preference + provider capability + duration + memory gating.
-- Explicit image-to-video vs deterministic image-motion routing.
-- Host resource snapshots.
-- Conservative resource-aware execution.
-- Deterministic scene-video cache keys.
-- Content-addressed cache validation using input image hash and generation parameters.
-- Project media lifecycle transitions.
-- Video FFprobe and complete decode QA before persistence.
-- Provider failure fallback to deterministic motion.
-
-### Remaining evolution
-
-- Explicit cache statistics.
-- Cache cleanup/eviction policy.
-- Better resource-pressure policy based on real M4 measurements.
-- Mixed AI-video/static/deterministic-motion acceptance across a complete project.
-
----
-
-# Phase 9 — Deterministic Quality Assurance
-
-**Status: COMPLETE**
-
-### Scope
-
-- Image existence/signature/dimensions/hash validation.
-- Audio FFprobe/decode/duration validation.
-- Audio peak/headroom and silence gates.
-- Video metadata and complete decode validation.
-- Project/scene/artifact manifest validation.
-- UUID consistency checks.
-- Timeline and subtitle validation.
-- Scene coverage validation.
-- Final MP4 validation.
-- Machine-readable `qa-report.json`.
-- Targeted scene regeneration with downstream artifact invalidation.
-
-### Principle
-
-Deterministic QA must not claim to measure subjective visual quality. Semantic/visual evaluation belongs to later evaluation work.
-
----
-
-# Phase 10 — Bounded Agentic Recovery and Refinement
-
-**Status: IMPLEMENTED — FOUNDATION + INTEGRATIONS COMPLETE; ACCEPTANCE CONTINUES**
-
-### Scope
-
-- Explicit `RecoveryPolicy`.
-- Deterministic bounded attempt numbers.
-- Dedicated retry budgets for LLM, image, video and render operations.
-- Image/video recovery integrated with generation services.
-- Deterministic prompt/settings refinement between attempts.
-- Recovery metadata persisted in scene/project metadata.
-- Render recovery.
-- Narration-duration correction path.
-- Final retryable failure remains a failure; retries cannot manufacture success.
-
-### Safety boundary
-
-Recovery may simplify prompts or reduce settings only through explicit deterministic policies. It cannot change local-only policy, provider safety boundaries, filesystem boundaries or resource limits.
-
----
-
-# Phase 11 — Local Web API and Browser Dashboard
-
-**Status: IMPLEMENTED**
-
-### Scope
-
-- Loopback-only FastAPI/Uvicorn server.
-- Project creation/list/detail/resume.
-- Planning and media APIs.
-- Scene artifact serving and regeneration.
-- QA, timeline and subtitle endpoints.
-- Final MP4 endpoint.
-- Browser project creation and project browser.
-- Storyboard scene cards.
-- Scene timing/narration/media previews.
-- Stage-specific regeneration controls.
-- QA display.
-- Planning/job status polling.
-- Final-video visibility only after actual MP4 existence is confirmed.
-- Safe project-relative artifact path handling.
-- Structured HTTP 409/503 failure boundaries.
-- Lifecycle logging without logging full prompts or media payloads.
-
-### Design boundary
-
-The web layer is only a UI/API boundary. It does not duplicate Director, generation, QA or rendering logic.
-
----
-
-# Phase 12 — Persistent Local Job Orchestration
-
-**Status: IMPLEMENTED — TARGET-MACHINE ACCEPTANCE PENDING**
-
-### Scope
-
-- Persistent JSON-backed planning and media job manifests.
-- `queued → running → completed/failed` lifecycle.
-- `interrupted` recovery state after restart.
-- Single-worker local execution by default.
-- Per-scene progress persistence.
-- HTTP 202 asynchronous submission.
-- Planning worker and media worker separation.
-- Planning completion gate before media generation.
-- Browser polling and automatic refresh.
-- Restart semantics for stale jobs.
-- Strictly typed API/job boundaries.
-- Durable errors/timestamps.
-- Planning retry from persisted artifacts.
-- Operational documentation.
-
-### Architecture
+## Current execution order
 
 ```text
-Browser
-   ↓
-localhost API
-   ↓
-persistent local project/job manifests
-   ↓
-planning worker → Ollama → Director artifacts
-   ↓
-media worker → existing media orchestrator
-   ↓
-project/artifact store
+13 acceptance harness  [IMPLEMENTED]
+        ↓
+real M4 model/media acceptance  [TARGET MACHINE]
+        ↓
+14 semantic/visual evaluation
+        ↓
+15 advanced recovery
+        ↓
+16 provider/model registry
+        ↓
+17 security hardening
+        ↓
+18 test/CI expansion
+        ↓
+19 observability
+        ↓
+20 schema evolution
+        ↓
+21 M4 optimization
+        ↓
+22 V1 production gate
+        ↓
+23–24 V2/V3
 ```
 
-The job layer owns scheduling and lifecycle only. Existing Director/media services remain responsible for validation, provider routing, recovery, caching, artifact persistence and project state.
+## Immediate machine blocker
 
----
+The current target-M4 runtime previously failed because the configured SDXL directory was empty. The application correctly failed locally rather than downloading remotely. Once the Hugging Face SDXL download completes, run the Phase 13 full acceptance command against a storyboard-ready project.
 
-# Phase 13 — Target-Machine Acceptance Harness
+The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
-**Status: PLANNED / NEXT ENGINEERING PHASE**
+## Definition of done
 
-This phase converts the current manual hardware gate into a repeatable acceptance workflow without making CI dependent on multi-GB model weights.
+Every phase requires implementation, deterministic tests where applicable, documentation, CI validation, explicit acceptance criteria, and target-machine validation whenever behavior depends on real hardware/model execution.
 
-### Deliverables
-
-- Hardware acceptance command/report.
-- Environment and model readiness checks.
-- MPS availability/device information.
-- Model-directory completeness/readiness checks.
-- Model load timing.
-- Per-scene image/video generation timing.
-- Host memory/resource snapshots before/during/after generation.
-- Disk-space measurements.
-- Artifact integrity and FFprobe validation.
-- Restart/recovery verification for local jobs.
-- Final project QA and render validation.
-- Machine-readable acceptance report.
-- Clear distinction between automated repository tests and target-machine acceptance.
-- Documentation for the M4 acceptance procedure.
-
-### Gate
-
-Do **not** mark the hardware gate green merely because CI passes. Actual local model loading and generation must occur on the M4.
-
----
-
-# Phase 14 — Evaluation and Semantic/Visual Quality
-
-**Status: PLANNED**
-
-Introduce evaluation beyond deterministic media integrity.
-
-### Deliverables
-
-- Scene-level semantic consistency checks.
-- Prompt-to-image alignment evaluation.
-- Storyboard-to-generated-media consistency.
-- Motion quality evaluation for AI I2V clips.
-- Narration/script alignment checks.
-- Visual continuity checks across adjacent scenes.
-- Final-video subjective evaluation protocol.
-- Evaluation reports stored separately from deterministic QA.
-- No LLM-based score is allowed to override hard media-integrity failures.
-
-### Design principle
-
-Evaluation informs refinement; it does not silently mutate the project. Any automated refinement must remain bounded, deterministic and auditable.
-
----
-
-# Phase 15 — Advanced Recovery, Refinement and Regeneration
-
-**Status: PLANNED**
-
-Build on Phase 10 after real failure data exists.
-
-### Deliverables
-
-- Failure classification by provider/stage/error type.
-- Context-aware recovery policies.
-- Prompt refinement based on structured failure causes.
-- Resolution/step/duration reduction under resource pressure.
-- Selective scene regeneration.
-- Dependency-aware invalidation.
-- Recovery budgets per project/job.
-- Persisted recovery history.
-- No infinite retries.
-- No automatic policy escalation beyond configured limits.
-
----
-
-# Phase 16 — Provider Registry and Runtime Extensibility
-
-**Status: PLANNED**
-
-Make provider selection extensible without leaking provider-specific knowledge throughout the application.
-
-### Deliverables
-
-- Formal provider registry.
-- Provider capability/version metadata.
-- Model profile registry.
-- Runtime compatibility checks.
-- Provider health/readiness contracts.
-- Model profile selection by hardware/resource class.
-- Deterministic fallback graph.
-- Provider-specific configuration isolation.
-- Compatibility tests for every provider implementation.
-
-Potential future providers must preserve the existing image/audio/video contracts rather than creating parallel orchestration paths.
-
----
-
-# Phase 17 — Security and Locality Hardening
-
-**Status: PLANNED**
-
-### Deliverables
-
-- Full filesystem containment audit.
-- Input-size and payload limits.
-- Prompt/content validation boundaries.
-- Subprocess argument audit.
-- Localhost binding verification.
-- No-network enforcement review for inference/media paths.
-- Secret/config handling audit.
-- Artifact traversal tests.
-- Symlink/path escape tests.
-- Malformed manifest tests.
-- Dependency/security scanning in CI.
-- Explicit threat model and security documentation.
-
-### Security invariant
-
-A malformed browser request, model response, artifact manifest or generated path must never become arbitrary filesystem access, arbitrary subprocess execution, remote upload, or uncontrolled resource consumption.
-
----
-
-# Phase 18 — Testing Pyramid and CI/CD Gates
-
-**Status: PARTIALLY IMPLEMENTED — CONTINUOUSLY EXPANDING**
-
-### Test layers
-
-1. Unit tests — domain logic and deterministic transformations.
-2. Provider contract tests — every provider satisfies the same boundary.
-3. Integration tests — storage, Director, generation and rendering interactions.
-4. API tests — HTTP status/schema/error semantics.
-5. Job lifecycle tests — persistence, polling, failure and restart recovery.
-6. End-to-end deterministic pipeline tests.
-7. Hardware acceptance tests — executed only on the target machine.
-
-### CI gates
-
-- Ruff correctness rules.
-- Ruff formatting.
-- Strict mypy application boundaries.
-- Pytest.
-- FFmpeg/FFprobe deterministic media tests.
-- No model downloads in standard CI.
-- No generated artifacts committed.
-- Dependency/security checks as appropriate.
-
-### Required regression categories
-
-- failure propagation
-- retry exhaustion
-- malformed LLM JSON
-- stale artifact reuse
-- stale brief/duration mismatch
-- timeline overlap/overflow
-- artifact hash mismatch
-- provider unavailable
-- memory/resource gate
-- cache-key collision/boundary
-- restart recovery
-- path traversal
-- invalid API state transition
-- final MP4 missing/invalid
-
----
-
-# Phase 19 — Observability and Operational Diagnostics
-
-**Status: PARTIALLY IMPLEMENTED — FOUNDATION EXISTS**
-
-### Deliverables
-
-- Structured lifecycle events.
-- Stage/job/project correlation.
-- Generation timing metrics.
-- Provider/model/device metadata.
-- Resource snapshots.
-- Failure classification.
-- Acceptance-report aggregation.
-- Debug mode without leaking user prompts or generated media.
-- Operational log retention/rotation policy.
-- Human-readable and machine-readable diagnostics.
-
-Logging must remain privacy-preserving: operational metadata is useful; full prompts, narration payloads and media contents should not be dumped into logs by default.
-
----
-
-# Phase 20 — Persistence Evolution and Schema Migrations
-
-**Status: PLANNED**
-
-As project/job/artifact manifests evolve:
-
-- explicit schema versions.
-- migration functions.
-- backward-compatible readers where practical.
-- safe upgrade validation.
-- corrupted-manifest detection.
-- migration tests.
-- recovery snapshots before destructive migrations.
-- clear project/job/artifact compatibility rules.
-
-The filesystem remains the durable local store unless measurements demonstrate that a database is necessary. Do not introduce a database merely for architectural fashion.
-
----
-
-# Phase 21 — Performance and M4 Resource Optimization
-
-**Status: PLANNED — DEPENDS ON REAL ACCEPTANCE DATA**
-
-### Deliverables
-
-- Model-load benchmarks.
-- Warm vs cold generation benchmarks.
-- Unified-memory peak/steady-state measurements.
-- CPU/GPU/MPS utilization measurements where available.
-- Disk I/O measurements.
-- Thermal/throttling observations.
-- Provider/model profile comparison.
-- Optimal resolution/steps/FPS profiles.
-- Concurrency tuning.
-- Cache effectiveness measurements.
-- Memory cleanup between jobs.
-- Long-running stability tests.
-
-### Target
-
-Optimize for a reliable local production workflow on the M4/36 GB machine rather than maximizing theoretical model size.
-
----
-
-# Phase 22 — V1 Production Workflow
-
-**Status: PLANNED**
-
-V1 is complete when a user can reliably:
-
-1. Enter a natural-language brief.
-2. Generate a validated storyboard locally.
-3. Review scene timing and narration.
-4. Generate local scene media.
-5. Recover failed scenes within bounded policies.
-6. Run deterministic QA.
-7. Render a final MP4.
-8. Inspect the final result in the dashboard.
-9. Resume interrupted planning/media jobs after restart.
-10. Reproduce project outputs from persisted manifests and configuration.
-
-### V1 acceptance
-
-- local-only behavior verified.
-- no unbounded retries.
-- no unsafe filesystem/subprocess behavior.
-- deterministic QA passes.
-- target M4 model/resource acceptance passes.
-- final MP4 passes media validation.
-- representative projects complete end-to-end.
-
----
-
-# Phase 23 — V2 Advanced Production Features
-
-**Status: FUTURE**
-
-Candidate scope after V1 stability:
-
-- richer transitions.
-- advanced camera/motion controls.
-- more sophisticated subtitle styling.
-- multiple audio layers/music/SFX under explicit local providers.
-- scene continuity controls.
-- richer project editing in the browser.
-- project templates.
-- batch generation with strict resource scheduling.
-- better cache management.
-- richer evaluation/refinement loops.
-
-These features must not destabilize the V1 deterministic pipeline.
-
----
-
-# Phase 24 — V3 Platform Evolution
-
-**Status: FUTURE / RESEARCH**
-
-Potential long-term work:
-
-- multi-model orchestration.
-- advanced local agent workflows.
-- pluggable model/runtime backends.
-- distributed local-machine execution only if a real use case requires it.
-- richer editing and project interchange formats.
-- advanced evaluation pipelines.
-- optional database-backed indexing if filesystem persistence becomes insufficient.
-
-No V3 feature should violate the original local-first/privacy/resource-control architecture.
-
----
-
-# Current execution order
-
-The roadmap is intentionally not a declaration that every future phase should be implemented immediately. The current engineering sequence is:
-
-```text
-Phases 0–12
-    ↓
-13  Target-machine acceptance harness
-    ↓
-real M4 model + media acceptance
-    ↓
-14  Semantic / visual evaluation
-    ↓
-15  Advanced bounded recovery
-    ↓
-16  Provider/model registry evolution
-    ↓
-17  Security hardening
-    ↓
-18  Test/CI expansion
-    ↓
-19  Operational diagnostics
-    ↓
-20  Persistence/schema evolution
-    ↓
-21  M4 performance optimization
-    ↓
-22  V1 production gate
-    ↓
-23–24 V2/V3 only after V1 is stable
-```
-
-## What is actually left right now
-
-The current repository has substantial implementation through Phase 12. The immediate gap is **not “build another web page.”** The next engineering work is to make the target-machine acceptance reproducible, then use the resulting M4 measurements to drive evaluation, recovery, provider/resource tuning, security, and production hardening.
-
-The currently observed M4 blocker is environmental rather than an orchestration defect: the configured local SDXL model directory must be populated before the Diffusers image provider can load it. The application correctly fails with a structured provider-unavailable error instead of attempting a remote model download.
-
-## Definition of done for the roadmap
-
-A phase is not considered complete merely because code exists. It requires:
-
-- implementation,
-- deterministic tests where applicable,
-- documentation,
-- CI validation,
-- explicit acceptance criteria,
-- and target-machine validation where the phase depends on real hardware/model behavior.
-
-`plan.md` is the source of truth and must be updated after meaningful implementation commits so that completed, pending, and future work cannot be confused again.
+`plan.md` is the source of truth and must be updated after meaningful implementation commits.
