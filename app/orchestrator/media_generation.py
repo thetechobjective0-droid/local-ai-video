@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.exceptions import VideoAgentError
 from app.generation.image_recovery import generate_scene_image_with_recovery
+from app.generation.video import generate_scene_video
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus
 from app.models.scene import MediaType, Scene
@@ -75,17 +76,11 @@ def generate_project_media(
         for scene in sorted(scenes, key=lambda item: item.index):
             current = scene
             if image_provider is not None and current.image_asset is None:
-                image_result = generate_scene_image_with_recovery(
-                    image_provider,
-                    store,
-                    project_id,
-                    current,
-                )
-                current = image_result.scene
-                current = current.model_copy(
+                image_result = generate_scene_image_with_recovery(image_provider, store, project_id, current)
+                current = image_result.scene.model_copy(
                     update={
                         "metadata": {
-                            **current.metadata,
+                            **image_result.scene.metadata,
                             "image_recovery": {
                                 "attempts": image_result.attempts,
                                 "strategies": list(image_result.strategies),
@@ -105,19 +100,12 @@ def generate_project_media(
             if selected is MediaType.IMAGE_TO_VIDEO:
                 try:
                     video_result = generate_scene_video_with_recovery(
-                        video_provider,
-                        store,
-                        project_id,
-                        current,
-                        width=width,
-                        height=height,
-                        fps=fps,
+                        video_provider, store, project_id, current, width=width, height=height, fps=fps
                     )
-                    current = video_result.scene
-                    current = current.model_copy(
+                    current = video_result.scene.model_copy(
                         update={
                             "metadata": {
-                                **current.metadata,
+                                **video_result.scene.metadata,
                                 "video_recovery": {
                                     "attempts": video_result.attempts,
                                     "strategies": list(video_result.strategies),
@@ -136,19 +124,12 @@ def generate_project_media(
             elif selected is MediaType.IMAGE_MOTION:
                 motion_provider = fallback_provider if fallback_provider is not None else video_provider
                 video_result = generate_scene_video_with_recovery(
-                    motion_provider,
-                    store,
-                    project_id,
-                    current,
-                    width=width,
-                    height=height,
-                    fps=fps,
+                    motion_provider, store, project_id, current, width=width, height=height, fps=fps
                 )
-                current = video_result.scene
-                current = current.model_copy(
+                current = video_result.scene.model_copy(
                     update={
                         "metadata": {
-                            **current.metadata,
+                            **video_result.scene.metadata,
                             "video_recovery": {
                                 "attempts": video_result.attempts,
                                 "strategies": list(video_result.strategies),
