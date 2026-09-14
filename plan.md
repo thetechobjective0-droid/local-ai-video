@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete.** Phases 5–10 status documents are synchronized with the implemented code, including timeline/subtitles, rendering, AI video provider integration, deterministic media strategy, deterministic QA, and bounded recovery/refinement. Target Apple M4 / 36 GB hardware acceptance remains a machine-level activity for actual model loading, memory pressure, generation latency, thermal behavior, and subjective visual quality.
+**Phases 0–10 repository implementation are complete.** Phases 5–10 status documents are synchronized with the implemented code, including timeline/subtitles, rendering, AI video provider integration, deterministic media strategy, deterministic QA, and bounded recovery/refinement. The final hardening also ensures project media orchestration receives configured image-generation parameters and targeted regeneration invalidates downstream final-render artifacts. Target Apple M4 / 36 GB hardware acceptance remains a machine-level activity for actual model loading, memory pressure, generation latency, thermal behavior, and subjective visual quality.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -34,6 +34,8 @@ Delivered through Phase 10:
 - deterministic narration pad-or-trim duration correction
 - bounded final-render retry with renderer-owned partial-output cleanup
 - persisted recovery metadata in scene and render manifests
+- configured image-generation settings propagated into project media generation
+- targeted regeneration invalidates final/render/QA artifacts before regeneration
 - synchronized Phase 5–10 status documentation
 - no unused recovery wrapper retained in the render package
 
