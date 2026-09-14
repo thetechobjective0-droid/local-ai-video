@@ -63,7 +63,7 @@ def _build_cues(scenes: list[Scene], max_chars: int) -> list[tuple[int, float, f
         weights = [max(1, len(line)) for line in lines]
         total_weight = sum(weights)
         cursor = scene.start_seconds
-        for line, weight in zip(lines, weights):
+        for line, weight in zip(lines, weights, strict=True):
             duration = scene.duration_seconds * weight / total_weight
             end = cursor + duration
             cues.append((number, cursor, end, line))
