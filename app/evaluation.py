@@ -36,7 +36,9 @@ class EvaluationReport:
         }
 
 
-def evaluate_project(store: FilesystemStore, project_id: UUID, *, minimum_score: float = 0.15) -> EvaluationReport:
+def evaluate_project(
+    store: FilesystemStore, project_id: UUID, *, minimum_score: float = 0.15
+) -> EvaluationReport:
     """Score textual semantic consistency without pretending to perform visual QA."""
     qa = validate_project(store, project_id)
     if not qa.passed:
@@ -90,7 +92,9 @@ def evaluate_project(store: FilesystemStore, project_id: UUID, *, minimum_score:
     return EvaluationReport(passed=passed, scores=tuple(scores), hard_qa_passed=True)
 
 
-def write_evaluation_report(store: FilesystemStore, project_id: UUID, report: EvaluationReport) -> Path:
+def write_evaluation_report(
+    store: FilesystemStore, project_id: UUID, report: EvaluationReport
+) -> Path:
     path = store.project_dir(project_id) / "evaluation-report.json"
     path.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
     return path
