@@ -460,27 +460,28 @@ The repository-side foundation is complete. Final hardware acceptance must be ex
 
 Use the local LLM as the creative director while keeping all model output strictly validated.
 
-Initial implementation: Ollama adapter supporting the existing Qwen environment; Llama remains a supported alternative.
+## Implemented so far
 
-## Required flow
+- Local `LLMProvider` protocol.
+- Typed `LLMRequest` and `LLMResponse` structures.
+- Ollama `/api/chat` generation adapter.
+- Localhost-only enforcement in the Ollama adapter.
+- Structured response metadata capture.
+- Validated `CreativeBrief` Pydantic schema.
+- Director system prompt with local-only and non-executable-output constraints.
+- Director brief generation and JSON validation.
+- Unit tests for valid and invalid Director output.
 
-```text
-user prompt
-  ↓
-LLM
-  ↓
-parse
-  ↓
-Pydantic validation
-  ↓
-repair/retry if invalid
-  ↓
-persisted project
-```
+## Remaining
 
-## Acceptance criteria
+- real M4 Ollama inference acceptance
+- JSON repair/retry policy
+- full `VideoProject` creation from the brief
+- script generation
+- storyboard generation
+- prompt versioning files
 
-A natural-language request creates valid `brief.json` and `project.json` with no manual JSON editing.
+**Status: IN PROGRESS**
 
 ---
 
@@ -1092,12 +1093,19 @@ Implemented during Phase 0:
 - [x] CI quality gates
 - [x] documentation standard
 
-Deferred to Phase 1:
+Phase 1 progress:
 
-- [ ] one real Ollama inference generation
-- [ ] validated Director JSON output
-
-These are intentionally Phase 1 because they constitute the first actual Director vertical slice rather than environment/control-plane validation.
+- [x] LLM provider contract
+- [x] Ollama chat generation adapter
+- [x] localhost-only provider enforcement
+- [x] CreativeBrief schema
+- [x] Director brief generation
+- [x] Director structured-output tests
+- [ ] JSON repair/retry
+- [ ] real M4 inference acceptance
+- [ ] full project creation
+- [ ] script generation
+- [ ] storyboard generation
 
 ---
 
@@ -1126,7 +1134,7 @@ An engineer must be able to inspect every intermediate artifact, replace one pro
 
 # 39. Implementation Log
 
-The plan is updated as implementation progresses. Each meaningful implementation commit must update this section and the relevant phase status.
+The plan is updated as implementation progresses. Each meaningful implementation commit must update this section and the relevant phase status. Where GitHub's file-content API requires separate commits for individual files, the next plan synchronization commit records all intervening changes.
 
 ### Phase 0 implementation log
 
@@ -1140,6 +1148,21 @@ The plan is updated as implementation progresses. Each meaningful implementation
 - Added tests and GitHub Actions quality gates.
 - Added documentation Definition of Done and strengthened AI-agent operating rules.
 
-**Current status:** Phase 0 code complete; final acceptance requires running the documented commands on the target M4 Mac.
+**Status:** CODE COMPLETE — LOCAL M4 ACCEPTANCE PENDING.
 
-**Next:** Phase 1 — Local LLM Director.
+### Phase 1 implementation log
+
+- Added typed local LLM provider contract.
+- Implemented Ollama `/api/chat` generation.
+- Enforced localhost-only Ollama endpoints.
+- Added validated CreativeBrief schema.
+- Added Director brief generation with JSON/Pydantic validation.
+- Added Director tests for valid and malformed model output.
+
+**Status:** IN PROGRESS — real M4 inference and remaining Director pipeline stages pending.
+
+### Latest implementation synchronization
+
+This plan update records the Phase 1 implementation currently present in the repository. Future meaningful implementation commits must keep this log and the relevant checklist synchronized.
+
+**Next:** complete Phase 1 structured-output repair, project creation, script, and storyboard pipeline.
