@@ -22,11 +22,10 @@ from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
-from app.providers.ffmpeg_video import FFmpegVideoProvider
+from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.providers.video import VideoProvider
-from app.providers.factory import build_video_fallback, build_video_provider
 from app.qa.project import QAReport, validate_project
 from app.qa.report import write_qa_report
 from app.render.ffmpeg import FFmpegRenderer
