@@ -16,11 +16,14 @@ from app.generation.video import generate_scene_video
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
+from app.orchestrator.media_generation import generate_project_media
+from app.orchestrator.media_strategy import VideoCapability
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.ffmpeg_video import FFmpegVideoProvider
 from app.providers.ltx_video import LTXVideoProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
+from app.providers.video import VideoProvider
 from app.render.ffmpeg import FFmpegRenderer
 from app.storage.filesystem import FilesystemStore
 
@@ -67,22 +70,32 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _video_provider_and_store(config_path: Path | None):
+def _video_provider_and_store(
+    config_path: Path | None,
+) -> tuple[VideoProvider, FilesystemStore, VideoCapability]:
     app_config = load_config(config_path)
     configure_logging()
     if not app_config.runtime.local_only:
         raise typer.BadParameter("local_only must remain enabled")
     store = FilesystemStore(app_config.storage.root)
     if app_config.video.provider == "ffmpeg_ken_burns":
-        return FFmpegVideoProvider(), store
+        return (
+            FFmpegVideoProvider(),
+            store,
+            VideoCapability(image_to_video=True, max_duration_seconds=3600),
+        )
     if app_config.video.provider == "ltx_video":
         if app_config.video.model_path is None:
             raise typer.BadParameter("video.model_path is required for the local LTX provider")
-        return LTXVideoProvider(
-            app_config.video.model_path,
-            device=app_config.video.device,
-            dtype=app_config.video.dtype,
-        ), store
+        return (
+            LTXVideoProvider(
+                app_config.video.model_path,
+                device=app_config.video.device,
+                dtype=app_config.video.dtype,
+            ),
+            store,
+            VideoCapability(image_to_video=True, max_duration_seconds=20, memory_class="high"),
+        )
     raise typer.BadParameter(f"unsupported local video provider: {app_config.video.provider}")
 
 
@@ -241,7 +254,7 @@ def generate_video(
 ) -> None:
     """Generate one scene motion clip using the configured local video provider."""
     app_config = load_config(config)
-    provider, store = _video_provider_and_store(config)
+    provider, store, _ = _video_provider_and_store(config)
     project_uuid = UUID(project_id)
     scene = _load_scene(store, project_uuid, UUID(scene_id))
     artifact, _ = generate_scene_video(
@@ -255,6 +268,33 @@ def generate_video(
         seed=seed,
     )
     typer.echo(f"Generated video artifact: {artifact.id}")
+
+
+@app.command("generate-media")
+def generate_media(
+    project_id: str,
+    memory_gb: float | None = typer.Option(None, "--memory-gb", min=0),
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Generate project media using deterministic strategy and safe fallback."""
+    app_config = load_config(config)
+    provider, store, capability = _video_provider_and_store(config)
+    project_uuid = UUID(project_id)
+    results = generate_project_media(
+        store,
+        project_uuid,
+        _load_scenes(store, project_uuid),
+        video_provider=provider,
+        fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None,
+        video_capability=capability,
+        available_memory_gb=memory_gb,
+        width=app_config.video.width,
+        height=app_config.video.height,
+        fps=app_config.video.fps,
+    )
+    for result in results:
+        suffix = " (fallback)" if result.used_fallback else ""
+        typer.echo(f"Scene {result.scene.index}: {result.selected_media_type.value}{suffix}")
 
 
 @app.command("subtitles")
