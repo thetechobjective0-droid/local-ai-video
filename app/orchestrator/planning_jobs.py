@@ -45,16 +45,21 @@ class PlanningJobManager:
     def _save(self, job: PlanningJob) -> PlanningJob:
         path = self._path(job.id)
         payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False) as temp:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False
+        ) as temp:
             temp.write(payload)
             temp_path = temp.name
         from pathlib import Path
+
         Path(temp_path).replace(path)
         return job
 
     def _update(self, job_id: UUID, **changes: object) -> PlanningJob:
         current = self.get(job_id)
-        return self._save(current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)}))
+        return self._save(
+            current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
+        )
 
     def get(self, job_id: UUID) -> PlanningJob:
         path = self._path(job_id)
@@ -64,7 +69,9 @@ class PlanningJobManager:
 
     def submit(self, project_id: UUID) -> PlanningJob:
         now = datetime.now(timezone.utc)
-        job = PlanningJob(id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now)
+        job = PlanningJob(
+            id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now
+        )
         self._save(job)
         self._executor.submit(self._run, job.id)
         return job
@@ -100,7 +107,11 @@ class PlanningJobManager:
                     project = self.store.load_project(job.project_id)
                     project.status = ProjectStatus.FAILED
                     project.updated_at = datetime.now(timezone.utc)
-                    self.store.write_json(self.store.project_dir(job.project_id), "project.json", project.model_dump(mode="json"))
+                    self.store.write_json(
+                        self.store.project_dir(job.project_id),
+                        "project.json",
+                        project.model_dump(mode="json"),
+                    )
                 except (OSError, ValueError):
                     pass
 
