@@ -4,9 +4,9 @@ A local-only AI video production pipeline designed for Apple Silicon, initially 
 
 ## Current status
 
-**Phase 7 — local AI image-to-video provider boundary implemented with LTX-Video 2B distilled support; M4 hardware acceptance is pending.**
+**Phase 11 — local web API and browser dashboard implemented; M4 hardware acceptance is pending.**
 
-The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, FFmpeg rendering, a deterministic motion fallback, and a real local AI image-to-video adapter.
+The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, FFmpeg rendering, bounded media recovery, deterministic motion fallback, a real local AI image-to-video adapter, and a loopback-only FastAPI/Uvicorn dashboard.
 
 ## Local-only architecture
 
@@ -17,6 +17,19 @@ User -> CLI/UI -> Orchestrator -> Ollama/local models -> local media -> FFmpeg -
 ```
 
 GitHub is used for source control only. The application must not automatically upload prompts, media, artifacts, logs, or telemetry.
+
+## Web dashboard
+
+Install the development environment with `uv` and launch the local dashboard:
+
+```bash
+uv sync --extra dev
+uv run video-agent-web
+```
+
+Open `http://127.0.0.1:8765/` on the same machine. The web server binds to loopback by default and exposes project creation, storyboard inspection, persisted media previews, scene regeneration, QA, timeline/subtitle visibility, and final MP4 playback.
+
+See `docs/phase-11-web.md` for the API surface, artifact safety rules, and operational details.
 
 ## Development
 
@@ -89,12 +102,6 @@ uv run video-agent timeline <PROJECT_ID>
 uv run video-agent render <PROJECT_ID>
 ```
 
-Run tests:
-
-```bash
-uv run pytest
-```
-
 Run quality checks:
 
 ```bash
@@ -117,6 +124,7 @@ Read these before contributing:
 - `AGENTS.md` — AI agent operating contract
 - `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done
 - `docs/phase-7-ltx.md` — local LTX image-to-video backend status
+- `docs/phase-11-web.md` — local web API and dashboard guide
 - `.agents/skills/` — task-specific engineering playbooks
 - `CONTRIBUTING.md` — contribution workflow
 - `TESTING.md` — testing strategy
