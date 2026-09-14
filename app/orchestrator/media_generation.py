@@ -66,6 +66,12 @@ def generate_project_media(
     *,
     video_provider: VideoProvider,
     image_provider: ImageProvider | None = None,
+    image_model: str | None = None,
+    image_width: int = 1024,
+    image_height: int = 576,
+    image_steps: int = 30,
+    image_guidance_scale: float = 7.0,
+    image_seed: int | None = None,
     video_capability: VideoCapability | None = None,
     fallback_provider: VideoProvider | None = None,
     available_memory_gb: float | None = None,
@@ -88,7 +94,22 @@ def generate_project_media(
         for scene in sorted(scenes, key=lambda item: item.index):
             current = scene
             if image_provider is not None and current.image_asset is None:
-                image_result = generate_scene_image_with_recovery(image_provider, store, project_id, current)
+                image_kwargs: dict[str, object] = {
+                    "width": image_width,
+                    "height": image_height,
+                    "steps": image_steps,
+                    "guidance_scale": image_guidance_scale,
+                    "seed": image_seed,
+                }
+                if image_model is not None:
+                    image_kwargs["model"] = image_model
+                image_result = generate_scene_image_with_recovery(
+                    image_provider,
+                    store,
+                    project_id,
+                    current,
+                    **image_kwargs,
+                )
                 current = image_result.scene.model_copy(
                     update={
                         "metadata": {
