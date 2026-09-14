@@ -10,35 +10,29 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 20. Phase 11 — Local Web API + UI
 
-**Status: IN PROGRESS — API + UI FOUNDATION**
+**Status: IN PROGRESS — MEDIA CONTROLS**
 
 ### Delivered
 
-- created `phase11-web-api` branch from the Phase 10 implementation line
-- added localhost-oriented FastAPI application entry point
-- added project listing and project-detail endpoints
-- added project creation and Director resume endpoints
-- added deterministic project QA endpoint with persisted `qa-report.json`
-- added final MP4 artifact endpoint
-- added scene video regeneration endpoint using existing bounded recovery
-- added FastAPI and Uvicorn runtime dependencies
-- added `video-agent-web` launch entry point
-- enforced loopback binding (`127.0.0.1`) for the web server
-- hardened request validation and local-only configuration checks
-- added a browser dashboard served at `/`
-- added project creation form and project list
-- added project detail/storyboard scene cards
-- added QA result display
-- added targeted scene video regeneration control
-- added final video opening control
-- kept UI markup separate from API implementation to avoid circular dependencies
-- kept API orchestration thin and delegated to existing application services
+- local FastAPI/Uvicorn server on loopback
+- project listing, creation, detail, resume and QA endpoints
+- final MP4 access
+- unified scene regeneration API for image, audio, or video
+- configured local image/TTS/video providers reused by the API
+- bounded image/video recovery retained through existing generation services
+- browser dashboard with project creation, project list, storyboard scene cards and QA
+- scene regeneration stage selector for image/audio/video
+- generation busy-state handling in the UI
+- scene timing information in storyboard cards
+- final video player bound to the project artifact endpoint
+- separate UI module to keep API implementation clean
+- synchronized `plan.md` after each meaningful implementation increment
 
 ### Remaining
 
-- improve generation controls/status visibility for long-running workflows
-- expose image/audio regeneration controls through the UI
-- add richer artifact previews and timeline information
+- improve long-running generation status visibility
+- expose richer persisted scene image/audio/video artifact previews
+- expose timeline/subtitle information
 - add API/UI documentation and launch instructions
 - add Phase 11 acceptance/status documentation
 
