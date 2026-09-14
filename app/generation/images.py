@@ -5,7 +5,7 @@ from uuid import UUID
 
 from app.exceptions import VideoAgentError
 from app.models.artifact import Artifact
-from app.models.scene import Scene
+from app.models.scene import Scene, SceneStatus
 from app.providers.image import ImageGenerationRequest, ImageProvider
 from app.storage.filesystem import FilesystemStore
 
@@ -74,7 +74,7 @@ def generate_scene_image(
         f"scene-{scene.index:04d}-image.json",
         artifact.model_dump(mode="json"),
     )
-    updated_scene = scene.model_copy(update={"image_asset": artifact.id, "status": "ready"})
+    updated_scene = scene.model_copy(update={"image_asset": artifact.id, "status": SceneStatus.READY})
     store.write_json(
         directory,
         f"scene-{scene.index:04d}.json",
