@@ -67,6 +67,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - persistent local planning job manifests under `planning-jobs`
 - planning worker uses one local worker to avoid competing for unified memory with media generation
 - planning request validation is centralized in `app/job_api.py`; the unused duplicate planning router module was removed
+- background job API helpers and response boundaries are explicitly typed for strict mypy
 - Ruff CI now enforces correctness-oriented `E`, `F`, and `B` rules; formatter handles layout and long embedded strings are exempted from E501, while Typer option/argument declarations are treated as intentional immutable calls
 - subtitle cue generation now uses explicit `zip(..., strict=True)` semantics
 - strict mypy configuration keeps heavy optional ML packages out of the CI environment while preserving type checking of application boundaries
