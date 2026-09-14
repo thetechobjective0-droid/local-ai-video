@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from app.director.brief import CreativeBrief
 from app.director.director import build_brief, build_script, build_storyboard
-from app.director.schemas import Script, Storyboard
+from app.director.schemas import Script, Storyboard, validate_storyboard_duration
 from app.models.project import ProjectStatus, VideoProject
 from app.models.run import GenerationRun
 from app.models.scene import Scene
@@ -102,6 +102,48 @@ def _load_artifact(directory: Path, filename: str, model: type[T]) -> T | None:
         return None
 
 
+def _subtitle_timestamp(seconds: float, *, vtt: bool = False) -> str:
+    total_ms = max(0, round(seconds * 1000))
+    hours, remainder = divmod(total_ms, 3_600_000)
+    minutes, remainder = divmod(remainder, 60_000)
+    secs, millis = divmod(remainder, 1000)
+    separator = "." if vtt else ","
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}{separator}{millis:03d}"
+
+
+def _persist_subtitles(directory: Path, storyboard: Storyboard) -> None:
+    """Persist deterministic SRT and WebVTT subtitles from storyboard narration."""
+    entries = [
+        scene
+        for scene in sorted(storyboard.scenes, key=lambda item: item.index)
+        if scene.narration.strip()
+    ]
+    srt_parts: list[str] = []
+    vtt_parts: list[str] = ["WEBVTT", ""]
+    for number, scene in enumerate(entries, start=1):
+        start = scene.start_seconds
+        end = scene.start_seconds + scene.duration_seconds
+        text = scene.narration.strip()
+        srt_parts.extend(
+            [
+                str(number),
+                f"{_subtitle_timestamp(start)} --> {_subtitle_timestamp(end)}",
+                text,
+                "",
+            ]
+        )
+        vtt_parts.extend(
+            [
+                f"{_subtitle_timestamp(start, vtt=True)} --> {_subtitle_timestamp(end, vtt=True)}",
+                text,
+                "",
+            ]
+        )
+    (directory / "subtitles.srt").write_text("\n".join(srt_parts), encoding="utf-8")
+    (directory / "subtitles.vtt").write_text("\n".join(vtt_parts), encoding="utf-8")
+    logger.info("[director] subtitles persisted scenes=%s formats=srt,vtt", len(entries))
+
+
 def _persist_storyboard_outputs(
     store: FilesystemStore, directory: Path, project: VideoProject, storyboard: Storyboard
 ) -> None:
@@ -147,6 +189,7 @@ def _persist_storyboard_outputs(
         metadata={"generated_by": "director", "stage": "storyboard"},
     )
     store.write_json(directory, "timeline.json", timeline.model_dump(mode="json"))
+    _persist_subtitles(directory, storyboard)
     logger.info(
         "[director] timeline persisted project=%s scenes=%s duration=%ss",
         project.id,
@@ -215,16 +258,26 @@ def resume_plan(
     logger.info("[director] resume project=%s current_status=%s", project.id, project.status.value)
     if not directory.is_dir():
         raise FileNotFoundError(f"project directory does not exist: {project_id}")
-    if project.status == ProjectStatus.STORYBOARD_READY and _load_artifact(
-        directory, "storyboard.json", Storyboard
-    ):
+
+    if project.status == ProjectStatus.STORYBOARD_READY:
         storyboard = _load_artifact(directory, "storyboard.json", Storyboard)
-        assert storyboard is not None
-        _persist_storyboard_outputs(store, directory, project, storyboard)
-        logger.info(
-            "[director] resume project=%s already storyboard_ready; outputs reconciled", project.id
-        )
-        return directory
+        if storyboard is not None:
+            try:
+                validate_storyboard_duration(storyboard, project.duration_seconds)
+            except ValueError as exc:
+                logger.warning(
+                    "[director] persisted storyboard invalid for target duration project=%s error=%s; regenerating",
+                    project.id,
+                    exc,
+                )
+            else:
+                _persist_storyboard_outputs(store, directory, project, storyboard)
+                logger.info(
+                    "[director] resume project=%s already storyboard_ready; outputs reconciled",
+                    project.id,
+                )
+                return directory
+
     start_from = "brief"
     if _load_artifact(directory, "brief.json", CreativeBrief):
         start_from = "script"
