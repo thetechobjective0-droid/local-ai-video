@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 from app.exceptions import ProviderUnavailableError, VideoAgentError
 from app.providers.video import VideoGenerationRequest, VideoResult
@@ -22,10 +23,10 @@ class LTXVideoProvider:
         self.model_path = model_path.expanduser().resolve()
         self.device = device
         self.dtype = dtype
-        self._pipeline = None
+        self._pipeline: Any = None
         self._model_name = self.model_path.name
 
-    def _load_pipeline(self):
+    def _load_pipeline(self) -> Any:
         if self._pipeline is not None:
             return self._pipeline
         if not self.model_path.is_dir():
