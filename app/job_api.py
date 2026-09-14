@@ -42,7 +42,9 @@ def _planning_job_response(store: FilesystemStore, job: PlanningJob) -> dict[str
     """Expose durable project completion over stale background-job state."""
     project = store.load_project(job.project_id)
     if project.status == ProjectStatus.STORYBOARD_READY and job.state != "completed":
-        job = job.model_copy(update={"state": "completed", "completed_stage": "storyboard", "error": None})
+        job = job.model_copy(
+            update={"state": "completed", "completed_stage": "storyboard", "error": None}
+        )
     return job.model_dump(mode="json")
 
 
@@ -55,7 +57,9 @@ def create_media_job(project_id: UUID) -> dict[str, Any]:
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="project not found") from None
     except ValueError as exc:
-        raise HTTPException(status_code=409, detail={"code": "planning_not_ready", "message": str(exc)}) from exc
+        raise HTTPException(
+            status_code=409, detail={"code": "planning_not_ready", "message": str(exc)}
+        ) from exc
     return job.model_dump(mode="json")
 
 
@@ -81,11 +85,22 @@ def create_project_async(request: CreateProjectRequest) -> dict[str, Any]:
     if config.llm.provider != "ollama":
         raise HTTPException(status_code=503, detail="local Ollama provider is required")
 
-    project = VideoProject(source_prompt=request.prompt, duration_seconds=request.duration, aspect_ratio=request.aspect_ratio, style=request.style, quality_profile=config.runtime.profile)
+    project = VideoProject(
+        source_prompt=request.prompt,
+        duration_seconds=request.duration,
+        aspect_ratio=request.aspect_ratio,
+        style=request.style,
+        quality_profile=config.runtime.profile,
+    )
     store = FilesystemStore(config.storage.root)
     directory = store.create_project(project)
     job = _planning_manager().submit(project.id)
-    return {"project_id": str(project.id), "path": str(directory), "job_id": str(job.id), "status": project.status.value}
+    return {
+        "project_id": str(project.id),
+        "path": str(directory),
+        "job_id": str(job.id),
+        "status": project.status.value,
+    }
 
 
 @router.get("/api/projects/{project_id}/planning-job")

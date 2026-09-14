@@ -144,38 +144,98 @@ def run_acceptance(
         try:
             scene = _scene(store, project_id)
             start = monotonic()
-            image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
+            image_provider = DiffusersImageProvider(
+                config.image.model_path, device=config.image.device
+            )
             load_start = monotonic()
             image_provider._load_pipeline()
-            add("image_model_load", True, f"loaded {config.image.model_path}", monotonic() - load_start)
-            image_artifact, scene = generate_scene_image(image_provider, store, project_id, scene, model=config.image.model_path.name, width=config.image.width, height=config.image.height, steps=config.image.steps, guidance_scale=config.image.guidance_scale)
-            add("image_generation", image_artifact.path.is_file() and image_artifact.path.stat().st_size > 0, f"{image_artifact.path.name}; {image_artifact.parameters.get('width')}x{image_artifact.parameters.get('height')}", monotonic() - start)
+            add(
+                "image_model_load",
+                True,
+                f"loaded {config.image.model_path}",
+                monotonic() - load_start,
+            )
+            image_artifact, scene = generate_scene_image(
+                image_provider,
+                store,
+                project_id,
+                scene,
+                model=config.image.model_path.name,
+                width=config.image.width,
+                height=config.image.height,
+                steps=config.image.steps,
+                guidance_scale=config.image.guidance_scale,
+            )
+            add(
+                "image_generation",
+                image_artifact.path.is_file() and image_artifact.path.stat().st_size > 0,
+                f"{image_artifact.path.name}; {image_artifact.parameters.get('width')}x{image_artifact.parameters.get('height')}",
+                monotonic() - start,
+            )
 
             video_provider = build_video_provider(config)
             video_load_start = monotonic()
             load = getattr(video_provider, "_load_pipeline", None)
             if callable(load):
                 load()
-                add("video_model_load", True, "local video model loaded", monotonic() - video_load_start)
+                add(
+                    "video_model_load",
+                    True,
+                    "local video model loaded",
+                    monotonic() - video_load_start,
+                )
             else:
                 add("video_model_load", True, "deterministic provider has no model-load stage")
             video_start = monotonic()
-            video_artifact, _ = generate_scene_video(video_provider, store, project_id, scene, width=config.video.width, height=config.video.height, fps=config.video.fps)
-            add("video_generation", video_artifact.path.is_file() and video_artifact.path.stat().st_size > 0, f"{video_artifact.path.name}; {video_artifact.parameters.get('width')}x{video_artifact.parameters.get('height')}@{video_artifact.parameters.get('fps')}", monotonic() - video_start)
+            video_artifact, _ = generate_scene_video(
+                video_provider,
+                store,
+                project_id,
+                scene,
+                width=config.video.width,
+                height=config.video.height,
+                fps=config.video.fps,
+            )
+            add(
+                "video_generation",
+                video_artifact.path.is_file() and video_artifact.path.stat().st_size > 0,
+                f"{video_artifact.path.name}; {video_artifact.parameters.get('width')}x{video_artifact.parameters.get('height')}@{video_artifact.parameters.get('fps')}",
+                monotonic() - video_start,
+            )
 
             report = validate_project(store, project_id)
-            add("project_qa", report.passed, "QA PASS" if report.passed else "; ".join(f.message for f in report.failures))
+            add(
+                "project_qa",
+                report.passed,
+                "QA PASS" if report.passed else "; ".join(f.message for f in report.failures),
+            )
             timeline = _timeline(store, project_id)
             render_start = monotonic()
             final_artifact = FFmpegRenderer().render(store, project_id, timeline)
-            add("final_render", final_artifact.path.is_file() and final_artifact.path.stat().st_size > 0, str(final_artifact.path), monotonic() - render_start)
+            add(
+                "final_render",
+                final_artifact.path.is_file() and final_artifact.path.stat().st_size > 0,
+                str(final_artifact.path),
+                monotonic() - render_start,
+            )
             final_qa = validate_project(store, project_id)
-            add("final_qa", final_qa.passed, "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures))
+            add(
+                "final_qa",
+                final_qa.passed,
+                "QA PASS" if final_qa.passed else "; ".join(f.message for f in final_qa.failures),
+            )
         except Exception as exc:
             add("media_pipeline", False, f"{type(exc).__name__}: {exc}")
 
     after = snapshot(config.storage.root)
-    return AcceptanceReport(passed=all(check.passed for check in checks), platform=platform.system(), machine=platform.machine(), checks=tuple(checks), resource_before=_resource_dict(before), resource_after=_resource_dict(after))
+    return AcceptanceReport(
+        passed=all(check.passed for check in checks),
+        platform=platform.system(),
+        machine=platform.machine(),
+        checks=tuple(checks),
+        resource_before=_resource_dict(before),
+        resource_after=_resource_dict(after),
+    )
 
 
 def write_report(report: AcceptanceReport, path: Path) -> Path:
