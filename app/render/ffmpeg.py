@@ -142,7 +142,8 @@ class FFmpegRenderer:
             video_input = input_index
             input_index += 1
 
-            audio = assets.get(scene.audio_asset) if scene.audio_asset else None
+            audio_asset_id = scene.audio_asset
+            audio = assets.get(audio_asset_id) if audio_asset_id is not None else None
             if audio is not None:
                 audio_path = _resolve_artifact_path(directory, audio)
                 command.extend(["-i", str(audio_path)])
