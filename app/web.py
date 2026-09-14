@@ -1,6 +1,7 @@
 """Local-only HTTP API for the video generation application."""
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 from uuid import UUID
 
@@ -196,7 +197,7 @@ def qa(project_id: UUID) -> dict[str, object]:
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="project not found") from None
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    return report.model_dump(mode="json")
+    return asdict(report)
 
 
 @app.get("/api/projects/{project_id}/timeline")
