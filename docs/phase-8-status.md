@@ -4,19 +4,20 @@
 
 **IN PROGRESS**
 
-Phase 8 now has a deterministic routing layer and a project-level media orchestration slice.
+Phase 8 now has deterministic routing, centralized provider capabilities, and project-level media orchestration.
 
 ## Implemented
 
 - `VideoCapability` defines provider capabilities and conservative limits.
 - `select_media_type()` chooses media deterministically from scene preference, fallback, provider capability, duration limits, and an optional available-memory signal.
-- `generate_project_media()` applies the strategy across all scenes.
+- A centralized provider capability registry defines the supported LTX and FFmpeg profiles.
+- `generate_project_media()` can resolve capabilities from the concrete provider instead of requiring CLI-local declarations.
+- Explicit `IMAGE_MOTION` routing is restricted to providers that advertise deterministic motion capability.
 - Image-to-video generation is attempted when selected.
 - Provider failure can fall back to deterministic image motion when a fallback provider is supplied.
 - Selected strategy and fallback usage are persisted in scene metadata.
 - CLI command: `video-agent generate-media <PROJECT_ID>`.
-- Configured LTX and FFmpeg providers expose their Phase 8 capability profiles through the CLI wiring.
-- Unit coverage was added for strategy selection and project-level fallback behavior.
+- Unit coverage covers registry lookup and explicit motion capability routing.
 
 ## Current deterministic policy
 
@@ -30,7 +31,9 @@ Provider capability + duration + memory gate
       |                         |
       |                         +--> fails --> IMAGE_MOTION fallback
       |
-      +--> IMAGE_MOTION ------------------------> deterministic motion
+      +--> IMAGE_MOTION --> provider advertises motion --> deterministic motion
+      |                  |
+      |                  +--> unsupported --> STATIC_IMAGE
       |
       +--> STATIC_IMAGE ------------------------> existing image
       |
@@ -47,24 +50,22 @@ After storyboard and scene images exist:
 uv run video-agent generate-media <PROJECT_ID>
 ```
 
-For an explicit memory signal:
-
-```bash
-uv run video-agent generate-media <PROJECT_ID> --memory-gb 12
-```
+The orchestration layer now resolves registered capabilities from the provider when a capability object is not explicitly supplied.
 
 ## Important limitation
 
 The current orchestrator assumes scene images have already been generated. It does not yet invoke the image provider itself. This keeps image generation and media routing independently rerunnable.
 
+The CLI still accepts an optional `--memory-gb` override. Real host resource snapshots are the next routing improvement.
+
 ## Next
 
-1. Add a formal provider capability registry instead of CLI-local capability declarations.
-2. Integrate real resource snapshots instead of an optional CLI memory value.
-3. Add cache keys around strategy inputs and generated artifacts.
-4. Add project state transitions for `ASSETS_GENERATING` and `ASSETS_READY`.
-5. Add video QA before an AI clip is accepted as renderable.
-6. Preserve the deterministic fallback path when AI video generation is unavailable or fails.
+1. Integrate real resource snapshots instead of an optional CLI memory value.
+2. Add cache keys around strategy inputs and generated artifacts.
+3. Add project state transitions for `ASSETS_GENERATING` and `ASSETS_READY`.
+4. Add video QA before an AI clip is accepted as renderable.
+5. Preserve the deterministic fallback path when AI video generation is unavailable or fails.
+6. Remove duplicated provider construction/capability knowledge from CLI wiring once the provider factory is centralized.
 
 ## Acceptance
 
