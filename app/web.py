@@ -1,5 +1,6 @@
 """Local-only HTTP API for the video generation application."""
 
+import json
 from uuid import UUID
 
 import uvicorn
@@ -66,9 +67,27 @@ def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> No
     store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
 
 
-@app.get("/", response_class=HTMLResponse)
-def index() -> str:
-    return HTML
+def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[object, str]:
+    scene = _scene(store, project_id, scene_id)
+    manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
+    if not manifest.is_file():
+        raise HTTPException(status_code=404, detail=f"scene {suffix} artifact not found")
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        artifact_id = UUID(str(data["id"]))
+        path_value = data["path"]
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="artifact manifest is invalid") from None
+    path = (store.project_dir(project_id) / path_value).resolve() if not str(path_value).startswith("/") else __import__("pathlib").Path(path_value).resolve()
+    project_dir = store.project_dir(project_id).resolve()
+    if project_dir not in path.parents or not path.is_file():
+        raise HTTPException(status_code=404, detail="artifact file not found")
+    return path, str(artifact_id)
+
+
+@app.get("/")
+def index() -> HTMLResponse:
+    return HTMLResponse(HTML)
 
 
 @app.get("/api/health")
@@ -152,6 +171,64 @@ def qa(project_id: UUID) -> dict[str, object]:
     return report.model_dump(mode="json")
 
 
+@app.get("/api/projects/{project_id}/timeline")
+def timeline(project_id: UUID) -> dict[str, object]:
+    store = _store()
+    path = store.project_dir(project_id) / "timeline.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="timeline not found")
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        raise HTTPException(status_code=422, detail="timeline is invalid") from None
+
+
+@app.get("/api/projects/{project_id}/subtitles/{format}")
+def subtitles(project_id: UUID, format: str) -> FileResponse:
+    if format not in {"srt", "vtt"}:
+        raise HTTPException(status_code=404, detail="unsupported subtitle format")
+    path = _store().project_dir(project_id) / f"subtitles.{format}"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="subtitle file not found")
+    media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
+    return FileResponse(path, media_type=media_type, filename=path.name)
+
+
+@app.get("/api/projects/{project_id}/scenes/{scene_id}/image")
+def scene_image(project_id: UUID, scene_id: UUID) -> FileResponse:
+    path, _ = _artifact_path(_store(), project_id, scene_id, "image")
+    return FileResponse(path, media_type="image/png")
+
+
+@app.get("/api/projects/{project_id}/scenes/{scene_id}/audio")
+def scene_audio(project_id: UUID, scene_id: UUID) -> FileResponse:
+    path, _ = _artifact_path(_store(), project_id, scene_id, "audio")
+    return FileResponse(path, media_type="audio/wav")
+
+
+@app.get("/api/projects/{project_id}/scenes/{scene_id}/video")
+def scene_video(project_id: UUID, scene_id: UUID) -> FileResponse:
+    path, _ = _artifact_path(_store(), project_id, scene_id, "video")
+    return FileResponse(path, media_type="video/mp4")
+
+
+@app.get("/api/projects/{project_id}/scenes/{scene_id}/artifacts")
+def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, object]:
+    store = _store()
+    scene = _scene(store, project_id, scene_id)
+    result: dict[str, object] = {"scene_id": str(scene.id), "artifacts": {}}
+    for suffix in ("image", "audio", "video"):
+        manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
+        if not manifest.is_file():
+            continue
+        try:
+            artifact = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        result["artifacts"][suffix] = {**artifact, "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}"}
+    return result
+
+
 @app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
 def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> dict[str, object]:
     config = _local_config()
@@ -169,7 +246,8 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
         attempts, strategies = result.attempts, list(result.strategies)
     elif request.stage == "audio":
         provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
-        artifact, _ = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+        artifact, updated_scene = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+        scene = updated_scene
         attempts, strategies = 1, ["original"]
     else:
         provider = build_video_provider(config)
