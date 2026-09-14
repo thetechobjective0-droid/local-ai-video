@@ -1,5 +1,7 @@
 """Script and storyboard schemas."""
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.scene import Scene
@@ -11,6 +13,33 @@ class Script(BaseModel):
     title: str = Field(min_length=1)
     narration: str = Field(min_length=1)
     estimated_duration_seconds: float = Field(gt=0)
+
+
+def estimate_narration_seconds(text: str, words_per_minute: float = 150.0) -> float:
+    """Estimate spoken duration from word count for deterministic timing checks."""
+    if words_per_minute <= 0:
+        raise ValueError("words per minute must be positive")
+    word_count = len(re.findall(r"\S+", text))
+    return word_count / words_per_minute * 60.0
+
+
+def validate_script_duration(
+    script: Script,
+    target_duration_seconds: float,
+    tolerance_ratio: float = 0.25,
+) -> None:
+    """Ensure the script estimate and narration length are compatible with the target."""
+    if target_duration_seconds <= 0 or tolerance_ratio < 0:
+        raise ValueError("target duration must be positive and tolerance ratio non-negative")
+    lower = target_duration_seconds * (1 - tolerance_ratio)
+    upper = target_duration_seconds * (1 + tolerance_ratio)
+    if not lower <= script.estimated_duration_seconds <= upper:
+        raise ValueError("script estimated duration is incompatible with target duration")
+    estimated_narration = estimate_narration_seconds(script.narration)
+    if not lower <= estimated_narration <= upper:
+        raise ValueError(
+            f"script narration estimates {estimated_narration:.3f}s; target is {target_duration_seconds:.3f}s"
+        )
 
 
 class Storyboard(BaseModel):
@@ -29,6 +58,12 @@ class Storyboard(BaseModel):
                 raise ValueError("scene intervals must not overlap")
             if scene.duration_seconds <= 0:
                 raise ValueError("scene duration must be positive")
+            if scene.subtitle_range is not None:
+                subtitle_start, subtitle_end = scene.subtitle_range
+                if subtitle_start < 0 or subtitle_end <= subtitle_start:
+                    raise ValueError("subtitle range must be positive and ordered")
+                if subtitle_start < scene.start_seconds - 1e-6 or subtitle_end > scene.start_seconds + scene.duration_seconds + 1e-6:
+                    raise ValueError("subtitle range must remain inside scene interval")
             previous_end = scene.start_seconds + scene.duration_seconds
         return self
 
