@@ -13,9 +13,7 @@ echo
 
 echo "→ Syncing dependencies..."
 uv sync --extra dev --extra image
-
 echo
-
 echo "→ Checking required tools..."
 
 command -v uv >/dev/null 2>&1 || { echo "ERROR: uv is not installed."; exit 1; }
@@ -51,7 +49,7 @@ echo "========================================"
 echo " Starting Local AI Video Web UI"
 echo "========================================"
 echo
-echo "Open: http://127.0.0.1:8000"
+echo "Open: http://127.0.0.1:8765"
 echo "Press Ctrl+C to stop."
 echo
 
