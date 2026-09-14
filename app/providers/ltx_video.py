@@ -94,8 +94,8 @@ class LTXVideoProvider:
         if not request.output_path.is_file() or request.output_path.stat().st_size == 0:
             raise VideoAgentError("LTX returned no usable video file")
         digest = hashlib.sha256(request.output_path.read_bytes()).hexdigest()
-        width = int(request.metadata.get("width", 704))
-        height = int(request.metadata.get("height", 384))
+        width = int(str(request.metadata.get("width", 704)))
+        height = int(str(request.metadata.get("height", 384)))
         duration = frames / request.fps
         return VideoResult(
             path=request.output_path,
