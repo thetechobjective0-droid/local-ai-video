@@ -18,6 +18,7 @@ from app.models.scene import Scene
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
+from app.render.ffmpeg import FFmpegRenderer
 from app.storage.filesystem import FilesystemStore
 
 app = typer.Typer(help="Local-only AI video generation agent.")
@@ -59,7 +60,7 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
         raise typer.BadParameter("local_only must remain enabled")
     if app_config.tts.provider != "macos_say":
         raise typer.BadParameter("only the local macOS Speech provider is supported in Phase 4")
-    provider = MacOSTTSProvider(sample_rate=app_config.tts.sample_rate)
+    provider = MacOSTTSProvider(sample_rate=app_config.ttts.sample_rate)
     return provider, FilesystemStore(app_config.storage.root)
 
 
@@ -235,6 +236,25 @@ def timeline(
     result = build_timeline(store, project, _load_scenes(store, project_uuid))
     typer.echo(f"Generated timeline: {store.project_dir(project_uuid) / 'timeline.json'}")
     typer.echo(f"Scenes: {len(result.scenes)}")
+
+
+@app.command("render")
+def render(
+    project_id: str,
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Render a project's persisted timeline into a validated MP4."""
+    store = FilesystemStore(load_config(config).storage.root)
+    project_uuid = UUID(project_id)
+    timeline_path = store.project_dir(project_uuid) / "timeline.json"
+    if not timeline_path.is_file():
+        raise typer.BadParameter("timeline.json not found; run 'video-agent timeline' first")
+    from app.models.timeline import Timeline
+
+    timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
+    artifact = FFmpegRenderer().render(store, project_uuid, timeline)
+    typer.echo(f"Rendered video artifact: {artifact.id}")
+    typer.echo(f"Output: {artifact.path}")
 
 
 if __name__ == "__main__":
