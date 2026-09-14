@@ -1,7 +1,6 @@
 """Build and persist a deterministic project timeline."""
 
 from pathlib import Path
-from uuid import UUID
 
 from app.exceptions import VideoAgentError
 from app.models.project import VideoProject
