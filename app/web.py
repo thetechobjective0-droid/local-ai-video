@@ -23,8 +23,10 @@ from app.qa.project import validate_project
 from app.qa.report import write_qa_report
 from app.storage.filesystem import FilesystemStore
 from app.web_ui import HTML
+from app.job_api import router as job_router
 
 app = FastAPI(title="Local AI Video", version="0.1.0")
+app.include_router(job_router)
 
 
 class CreateProjectRequest(BaseModel):
@@ -151,7 +153,7 @@ def project(project_id: UUID) -> dict[str, object]:
 def resume(project_id: UUID) -> dict[str, str]:
     config = _local_config()
     if config.llm.provider != "ollama":
-        raise HTTPException(status_code=503, detail="local Ollama provider is required")
+        raise HTTPException(status_code=503, detail="local Ollama provider required")
     provider = OllamaProvider(config.llm.base_url)
     provider.require_health()
     provider.require_model(config.llm.model)
@@ -247,7 +249,7 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
         attempts, strategies = result.attempts, list(result.strategies)
     elif request.stage == "audio":
         provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
-        artifact, updated_scene = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+        _, updated_scene = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
         scene = updated_scene
         attempts, strategies = 1, ["original"]
     else:
