@@ -10,7 +10,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 20. Phase 11 — Local Web API + UI
 
-**Status: IN PROGRESS — MEDIA CONTROLS**
+**Status: IN PROGRESS — ARTIFACT PREVIEWS**
 
 ### Delivered
 
@@ -27,12 +27,15 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - final video player bound to the project artifact endpoint
 - separate UI module to keep API implementation clean
 - synchronized `plan.md` after each meaningful implementation increment
+- persisted scene image/audio/video artifact preview endpoints
+- scene artifact metadata endpoint with persisted manifest details and safe project-relative file serving
+- persisted project timeline JSON endpoint
+- persisted SRT/WebVTT subtitle file endpoints
 
 ### Remaining
 
+- bind the new artifact endpoints into the browser storyboard UI
 - improve long-running generation status visibility
-- expose richer persisted scene image/audio/video artifact previews
-- expose timeline/subtitle information
 - add API/UI documentation and launch instructions
 - add Phase 11 acceptance/status documentation
 
