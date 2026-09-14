@@ -15,7 +15,10 @@ class GenerationRun(BaseModel):
     stage: str = Field(min_length=1)
     provider: str = Field(min_length=1)
     model: str = Field(min_length=1)
+    input: dict[str, object] = Field(default_factory=dict)
+    parameters: dict[str, object] = Field(default_factory=dict)
     started_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None
-    status: str = "running"
+    status: str = Field(default="running", min_length=1)
     error: str | None = None
+    output_artifacts: list[str] = Field(default_factory=list)
