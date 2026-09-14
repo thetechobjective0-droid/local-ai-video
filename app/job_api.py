@@ -40,13 +40,17 @@ def _planning_manager() -> PlanningJobManager:
 
 @router.post("/api/projects/{project_id}/jobs/media", status_code=202)
 def create_media_job(project_id: UUID) -> dict[str, Any]:
+    """Queue media generation only after planning has produced scenes."""
     manager = _manager()
     try:
         job = manager.submit(project_id)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="project not found") from None
     except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "planning_not_ready", "message": str(exc)},
+        ) from exc
     return job.model_dump(mode="json")
 
 
