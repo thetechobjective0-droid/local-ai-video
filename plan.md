@@ -36,6 +36,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - API/UI launch and operational documentation in `docs/phase-11-web.md`
 - Phase 11 acceptance/status record in `docs/phase-11-status.md`
 - README launch instructions and Phase 11 status
+- explicit `pathlib.Path` handling for persisted artifact paths in the API
 - synchronized `plan.md` after each meaningful implementation increment
 
 ### Deferred by design
