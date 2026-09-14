@@ -175,9 +175,12 @@ def timeline(project_id: UUID) -> dict[str, Any]:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="timeline not found")
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         raise HTTPException(status_code=422, detail="timeline is invalid") from None
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=422, detail="timeline is invalid")
+    return data
 
 
 @app.get("/api/projects/{project_id}/subtitles/{format}")
@@ -236,7 +239,7 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
     scene = _scene(store, project_id, scene_id)
     if request.stage == "image":
         image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
-        result = generate_scene_image_with_recovery(
+        image_result = generate_scene_image_with_recovery(
             image_provider,
             store,
             project_id,
@@ -247,19 +250,19 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
             steps=config.image.steps,
             guidance_scale=config.image.guidance_scale,
         )
-        scene = result.scene.model_copy(
+        scene = image_result.scene.model_copy(
             update={
                 "metadata": {
-                    **result.scene.metadata,
+                    **image_result.scene.metadata,
                     "image_recovery": {
-                        "attempts": result.attempts,
-                        "strategies": list(result.strategies),
+                        "attempts": image_result.attempts,
+                        "strategies": list(image_result.strategies),
                     },
                 }
             }
         )
         _persist_scene(store, project_id, scene)
-        attempts, strategies = result.attempts, list(result.strategies)
+        attempts, strategies = image_result.attempts, list(image_result.strategies)
     elif request.stage == "audio":
         audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
         _, updated_scene = generate_scene_audio(
@@ -269,7 +272,7 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
         attempts, strategies = 1, ["original"]
     else:
         video_provider = build_video_provider(config)
-        result = generate_scene_video_with_recovery(
+        video_result = generate_scene_video_with_recovery(
             video_provider,
             store,
             project_id,
@@ -278,19 +281,19 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
             height=config.video.height,
             fps=config.video.fps,
         )
-        scene = result.scene.model_copy(
+        scene = video_result.scene.model_copy(
             update={
                 "metadata": {
-                    **result.scene.metadata,
+                    **video_result.scene.metadata,
                     "video_recovery": {
-                        "attempts": result.attempts,
-                        "strategies": list(result.strategies),
+                        "attempts": video_result.attempts,
+                        "strategies": list(video_result.strategies),
                     },
                 }
             }
         )
         _persist_scene(store, project_id, scene)
-        attempts, strategies = result.attempts, list(result.strategies)
+        attempts, strategies = video_result.attempts, list(video_result.strategies)
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
     return {
