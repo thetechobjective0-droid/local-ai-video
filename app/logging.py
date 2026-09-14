@@ -6,6 +6,7 @@ from contextvars import ContextVar
 _project_id: ContextVar[str] = ContextVar("project_id", default="-")
 _run_id: ContextVar[str] = ContextVar("run_id", default="-")
 _stage: ContextVar[str] = ContextVar("stage", default="-")
+_CONFIGURED = "local_ai_video_logging_configured"
 
 
 class ContextFilter(logging.Filter):
@@ -19,13 +20,14 @@ class ContextFilter(logging.Filter):
 
 
 def configure_logging(level: int = logging.INFO) -> None:
-    """Configure one predictable stderr handler for the application."""
+    """Configure application logging explicitly, including when Uvicorn already has handlers."""
     root = logging.getLogger()
     root.setLevel(level)
-    if root.handlers:
+    if getattr(root, _CONFIGURED, False):
         return
 
     handler = logging.StreamHandler()
+    handler.setLevel(level)
     handler.addFilter(ContextFilter())
     handler.setFormatter(
         logging.Formatter(
@@ -34,6 +36,7 @@ def configure_logging(level: int = logging.INFO) -> None:
         )
     )
     root.addHandler(handler)
+    setattr(root, _CONFIGURED, True)
 
 
 def set_log_context(*, project_id: str = "-", run_id: str = "-", stage: str = "-") -> None:
