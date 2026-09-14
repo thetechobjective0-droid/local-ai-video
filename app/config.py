@@ -23,6 +23,17 @@ class LLMConfig(BaseModel):
     top_k: int = Field(default=40, ge=1)
 
 
+class ImageConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = "diffusers"
+    model_path: Path = Path("./data/models/stable-diffusion-xl-base-1.0")
+    device: str = Field(default="mps", pattern="^(mps|cpu)$")
+    width: int = Field(default=1024, ge=64, multiple_of=8)
+    height: int = Field(default=576, ge=64, multiple_of=8)
+    steps: int = Field(default=30, ge=1, le=200)
+    guidance_scale: float = Field(default=7.0, ge=0, le=30)
+
+
 class StorageConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     root: Path = Path("./data")
@@ -32,6 +43,7 @@ class AppConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     runtime: RuntimeConfig = RuntimeConfig()
     llm: LLMConfig = LLMConfig()
+    image: ImageConfig = ImageConfig()
     storage: StorageConfig = StorageConfig()
 
 
