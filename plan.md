@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete. Phase 11 is now in progress.** The Phase 11 web layer is a thin local-only interface over existing application services. The API is packaged with FastAPI/Uvicorn and runs on loopback by default. The API/UI must not duplicate generation logic. Target Apple M4 / 36 GB hardware acceptance remains a machine-level activity for actual model loading, memory pressure, generation latency, thermal behavior, and subjective visual quality.
+**Phases 0–10 repository implementation are complete. Phase 11 is now in progress.** The Phase 11 web layer is a thin local-only interface over existing application services. The API is packaged with FastAPI/Uvicorn and runs on loopback by default. A browser dashboard is now served by the same local process. The API/UI must not duplicate generation logic. Target Apple M4 / 36 GB hardware acceptance remains a machine-level activity for actual model loading, memory pressure, generation latency, thermal behavior, and subjective visual quality.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -10,7 +10,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 20. Phase 11 — Local Web API + UI
 
-**Status: IN PROGRESS — API FOUNDATION + PACKAGING**
+**Status: IN PROGRESS — API + UI FOUNDATION**
 
 ### Delivered
 
@@ -25,14 +25,20 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - added `video-agent-web` launch entry point
 - enforced loopback binding (`127.0.0.1`) for the web server
 - hardened request validation and local-only configuration checks
+- added a browser dashboard served at `/`
+- added project creation form and project list
+- added project detail/storyboard scene cards
+- added QA result display
+- added targeted scene video regeneration control
+- added final video opening control
+- kept UI markup separate from API implementation to avoid circular dependencies
 - kept API orchestration thin and delegated to existing application services
 
 ### Remaining
 
-- add local web UI/dashboard
-- add project creation form and generation controls
-- add scene/storyboard and artifact views
-- add QA display and targeted regeneration controls
+- improve generation controls/status visibility for long-running workflows
+- expose image/audio regeneration controls through the UI
+- add richer artifact previews and timeline information
 - add API/UI documentation and launch instructions
 - add Phase 11 acceptance/status documentation
 
