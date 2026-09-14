@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.exceptions import VideoAgentError
+from app.models.project import VideoProject
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.orchestrator.media_strategy import VideoCapability
@@ -49,11 +50,24 @@ def _scene(project_id: UUID) -> Scene:
     )
 
 
+def _create_project(store: FilesystemStore, project_id: UUID) -> None:
+    store.write_json(
+        store.project_dir(project_id),
+        "project.json",
+        VideoProject(
+            id=project_id,
+            source_prompt="test project",
+            duration_seconds=4,
+        ).model_dump(mode="json"),
+    )
+
+
 def test_project_media_uses_preferred_i2v(tmp_path: Path) -> None:
     store = FilesystemStore(tmp_path / "data")
     project_id = uuid4()
     directory = store.project_dir(project_id)
     directory.mkdir(parents=True)
+    _create_project(store, project_id)
     scene = _scene(project_id)
     image_path = directory / "image.png"
     image_path.write_bytes(b"image")
@@ -86,6 +100,7 @@ def test_project_media_falls_back_after_i2v_failure(tmp_path: Path) -> None:
     project_id = uuid4()
     directory = store.project_dir(project_id)
     directory.mkdir(parents=True)
+    _create_project(store, project_id)
     scene = _scene(project_id)
     image_path = directory / "image.png"
     image_path.write_bytes(b"image")
@@ -120,6 +135,7 @@ def test_project_media_rejects_text_to_video_until_supported(tmp_path: Path) -> 
     project_id = uuid4()
     directory = store.project_dir(project_id)
     directory.mkdir(parents=True)
+    _create_project(store, project_id)
     scene = Scene(
         index=1,
         start_seconds=0,
