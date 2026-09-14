@@ -4,9 +4,9 @@ A local-only AI video production pipeline designed for Apple Silicon, initially 
 
 ## Current status
 
-**Phase 6 — FFmpeg rendering implemented; final MP4 rendering and post-render validation are now wired through the CLI.**
+**Phase 7 — local AI image-to-video provider boundary implemented with LTX-Video 2B distilled support; M4 hardware acceptance is pending.**
 
-The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, and an isolated FFmpeg renderer for producing H.264/AAC MP4 output.
+The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, FFmpeg rendering, a deterministic motion fallback, and a real local AI image-to-video adapter.
 
 ## Local-only architecture
 
@@ -26,15 +26,15 @@ Install the base development environment with `uv`:
 uv sync --extra dev
 ```
 
-For local Diffusers image generation, install the optional image stack:
+For local Diffusers image generation and LTX video generation, install the optional image stack:
 
 ```bash
 uv sync --extra image
 ```
 
-The image backend expects a **pre-downloaded local Diffusers model directory**. It uses `local_files_only=True`; it does not download model weights during generation.
+Both AI media backends expect **pre-downloaded local model directories**. They use local-only loading and do not download model weights during generation.
 
-Configure the local model in YAML when needed:
+### Image generation
 
 ```yaml
 image:
@@ -45,6 +45,34 @@ image:
   height: 576
   steps: 30
   guidance_scale: 7.0
+```
+
+### AI image-to-video
+
+The first real AI I2V backend is LTX-Video 2B distilled, selected for the 36 GB unified-memory target. The deterministic FFmpeg provider remains the fallback.
+
+```yaml
+video:
+  provider: ltx_video
+  model_path: ./data/models/LTX-Video
+  device: mps
+  dtype: float16
+  width: 704
+  height: 384
+  fps: 16
+```
+
+Generate a scene video after its image exists:
+
+```bash
+uv run video-agent generate-video <PROJECT_ID> <SCENE_ID>
+```
+
+For deterministic motion without an AI video model:
+
+```yaml
+video:
+  provider: ffmpeg_ken_burns
 ```
 
 Run the CLI:
@@ -79,7 +107,7 @@ uv run mypy app
 
 Phase 6 keeps FFmpeg-specific subprocess construction inside `app/render/ffmpeg.py`. The renderer consumes the persisted `timeline.json`, resolves local artifact metadata, renders the scene sequence, validates the resulting MP4 with `ffprobe`, and persists `final-video.json` plus `render.json`.
 
-The initial renderer requires contiguous scene timing and supports local still-image/video media plus per-scene narration. More advanced transitions and AI-generated video clips are later phases.
+Phase 7 scene videos use the same artifact contract, so generated AI clips and deterministic motion clips can feed the renderer without changing rendering business logic.
 
 ## Documentation
 
@@ -88,7 +116,7 @@ Read these before contributing:
 - `plan.md` — implementation roadmap and architecture
 - `AGENTS.md` — AI agent operating contract
 - `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done
-- `docs/phase-6-status.md` — current FFmpeg implementation status
+- `docs/phase-7-ltx.md` — local LTX image-to-video backend status
 - `.agents/skills/` — task-specific engineering playbooks
 - `CONTRIBUTING.md` — contribution workflow
 - `TESTING.md` — testing strategy
