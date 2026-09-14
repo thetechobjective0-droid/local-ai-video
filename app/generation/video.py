@@ -18,6 +18,8 @@ def generate_scene_video(
     project_id: UUID,
     scene: Scene,
     *,
+    width: int = 704,
+    height: int = 384,
     fps: int = 16,
     seed: int | None = None,
 ) -> tuple[Artifact, Scene]:
@@ -27,6 +29,8 @@ def generate_scene_video(
         raise ValueError(f"project does not exist: {project_id}")
     if scene.image_asset is None:
         raise VideoAgentError("scene has no image asset; generate the scene image first")
+    if width <= 0 or height <= 0:
+        raise ValueError("video dimensions must be positive")
 
     image_manifest = directory / f"scene-{scene.index:04d}-image.json"
     if not image_manifest.is_file():
@@ -56,7 +60,12 @@ def generate_scene_video(
             duration_seconds=scene.duration_seconds,
             fps=fps,
             seed=seed,
-            metadata={"scene_id": str(scene.id), "scene_index": scene.index},
+            metadata={
+                "scene_id": str(scene.id),
+                "scene_index": scene.index,
+                "width": width,
+                "height": height,
+            },
         )
     )
     if not result.path.is_file() or result.path.stat().st_size == 0:
