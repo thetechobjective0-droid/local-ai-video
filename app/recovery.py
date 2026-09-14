@@ -1,7 +1,7 @@
 """Bounded recovery primitives for local generation workflows."""
 
 from dataclasses import dataclass
-from typing import Callable, TypeVar
+from typing import Callable, Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -19,24 +19,15 @@ class RecoveryPolicy:
 
 
 @dataclass(frozen=True)
-class RecoveryResult[T]:
+class RecoveryResult(Generic[T]):
     """Result and attempt count from a bounded operation."""
 
     value: T
     attempts: int
 
 
-def run_bounded(
-    operation: Callable[[int], T],
-    policy: RecoveryPolicy,
-) -> RecoveryResult[T]:
-    """Run an operation with an explicit finite retry budget.
-
-    The attempt number is zero-based and is supplied to the operation so a
-    caller can make a deterministic refinement decision. Exceptions outside
-    the policy are propagated immediately; the final retryable exception is
-    also propagated unchanged.
-    """
+def run_bounded(operation: Callable[[int], T], policy: RecoveryPolicy) -> RecoveryResult[T]:
+    """Run an operation with an explicit finite retry budget."""
     last_error: Exception | None = None
     for attempt in range(policy.max_attempts):
         try:
