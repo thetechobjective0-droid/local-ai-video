@@ -22,14 +22,35 @@ def test_renderer_builds_local_ffmpeg_command(tmp_path: Path) -> None:
     audio.write_bytes(b"wav")
     image_id = uuid4()
     audio_id = uuid4()
-    store.write_json(directory, "image-artifact.json", Artifact(project_id=project_id, id=image_id, type="scene_image", path=image, mime="image/png").model_dump(mode="json"))
-    store.write_json(directory, "audio-artifact.json", Artifact(project_id=project_id, id=audio_id, type="scene_audio", path=audio, mime="audio/wav").model_dump(mode="json"))
+    store.write_json(
+        directory,
+        "image-artifact.json",
+        Artifact(
+            project_id=project_id, id=image_id, type="scene_image", path=image, mime="image/png"
+        ).model_dump(mode="json"),
+    )
+    store.write_json(
+        directory,
+        "audio-artifact.json",
+        Artifact(
+            project_id=project_id, id=audio_id, type="scene_audio", path=audio, mime="audio/wav"
+        ).model_dump(mode="json"),
+    )
     timeline = Timeline(
         project_id=project_id,
         duration_seconds=2,
         fps=30,
         resolution="1920x1080",
-        scenes=[TimelineScene(scene_id=uuid4(), index=1, start_seconds=0, duration_seconds=2, image_asset=image_id, audio_asset=audio_id)],
+        scenes=[
+            TimelineScene(
+                scene_id=uuid4(),
+                index=1,
+                start_seconds=0,
+                duration_seconds=2,
+                image_asset=image_id,
+                audio_asset=audio_id,
+            )
+        ],
     )
 
     command, filter_complex = FFmpegRenderer()._build_command(
@@ -52,23 +73,55 @@ def test_renderer_persists_validated_final_artifact(tmp_path: Path) -> None:
     audio.write_bytes(b"wav")
     image_id = uuid4()
     audio_id = uuid4()
-    store.write_json(directory, "image.json", Artifact(project_id=project_id, id=image_id, type="scene_image", path=image).model_dump(mode="json"))
-    store.write_json(directory, "audio.json", Artifact(project_id=project_id, id=audio_id, type="scene_audio", path=audio).model_dump(mode="json"))
+    store.write_json(
+        directory,
+        "image.json",
+        Artifact(project_id=project_id, id=image_id, type="scene_image", path=image).model_dump(
+            mode="json"
+        ),
+    )
+    store.write_json(
+        directory,
+        "audio.json",
+        Artifact(project_id=project_id, id=audio_id, type="scene_audio", path=audio).model_dump(
+            mode="json"
+        ),
+    )
     timeline = Timeline(
         project_id=project_id,
         duration_seconds=2,
         fps=30,
         resolution="1920x1080",
-        scenes=[TimelineScene(scene_id=uuid4(), index=1, start_seconds=0, duration_seconds=2, image_asset=image_id, audio_asset=audio_id)],
+        scenes=[
+            TimelineScene(
+                scene_id=uuid4(),
+                index=1,
+                start_seconds=0,
+                duration_seconds=2,
+                image_asset=image_id,
+                audio_asset=audio_id,
+            )
+        ],
     )
     output = directory / "final.mp4"
     output.write_bytes(b"mp4")
 
     completed = type("Completed", (), {"returncode": 0, "stderr": "", "stdout": ""})()
-    probe = {"format": {"duration": "2.0"}, "streams": [{"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "30/1"}, {"codec_type": "audio"}]}
-    with patch("app.render.ffmpeg.subprocess.run", return_value=completed), patch(
-        "app.render.validator.subprocess.run",
-        return_value=type("Probe", (), {"returncode": 0, "stderr": "", "stdout": json.dumps(probe)})(),
+    probe = {
+        "format": {"duration": "2.0"},
+        "streams": [
+            {"codec_type": "video", "width": 1920, "height": 1080, "r_frame_rate": "30/1"},
+            {"codec_type": "audio"},
+        ],
+    }
+    with (
+        patch("app.render.ffmpeg.subprocess.run", return_value=completed),
+        patch(
+            "app.render.validator.subprocess.run",
+            return_value=type(
+                "Probe", (), {"returncode": 0, "stderr": "", "stdout": json.dumps(probe)}
+            )(),
+        ),
     ):
         artifact = FFmpegRenderer().render(store, project_id, timeline)
 

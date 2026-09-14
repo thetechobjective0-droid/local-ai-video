@@ -44,10 +44,16 @@ def generate_scene_image_with_recovery(
             current = scene
             strategies.append("original")
         elif attempt == 1:
-            current = scene.model_copy(update={"image_prompt": _simplify_prompt(original_prompt or scene.visual_description)})
+            current = scene.model_copy(
+                update={
+                    "image_prompt": _simplify_prompt(original_prompt or scene.visual_description)
+                }
+            )
             strategies.append("simplified_prompt")
         else:
-            current = scene.model_copy(update={"image_prompt": _simplify_prompt(scene.visual_description)})
+            current = scene.model_copy(
+                update={"image_prompt": _simplify_prompt(scene.visual_description)}
+            )
             strategies.append("visual_description_fallback")
         _, updated = generate_scene_image(provider, store, project_id, current, **kwargs)
         return updated
@@ -55,5 +61,7 @@ def generate_scene_image_with_recovery(
     try:
         result = run_bounded(operation, IMAGE_RETRY_POLICY)
     except Exception as exc:
-        raise VideoAgentError(f"scene image generation failed after bounded recovery: {exc}") from exc
+        raise VideoAgentError(
+            f"scene image generation failed after bounded recovery: {exc}"
+        ) from exc
     return ImageRecoveryResult(result.value, result.attempts, tuple(strategies))

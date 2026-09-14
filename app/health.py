@@ -49,7 +49,13 @@ def run_health_checks(config: AppConfig | None = None) -> list[CheckResult]:
         check_python(),
         check_command("ffmpeg"),
         check_ollama(config),
-        CheckResult("memory", resources.available_memory_bytes > 0, f"{resources.available_memory_bytes} bytes available"),
-        CheckResult("disk", resources.free_disk_bytes > 0, f"{resources.free_disk_bytes} bytes free"),
+        CheckResult(
+            "memory",
+            resources.available_memory_bytes > 0,
+            f"{resources.available_memory_bytes} bytes available",
+        ),
+        CheckResult(
+            "disk", resources.free_disk_bytes > 0, f"{resources.free_disk_bytes} bytes free"
+        ),
         CheckResult("storage", config.storage.root.exists(), str(config.storage.root.resolve())),
     ]

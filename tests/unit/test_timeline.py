@@ -18,8 +18,12 @@ def test_build_timeline_persists_scene_order_and_media(tmp_path) -> None:
     audio_id = uuid4()
     image_id = uuid4()
     scenes = [
-        Scene(index=2, start_seconds=4, duration_seconds=3, narration="Second", audio_asset=audio_id),
-        Scene(index=1, start_seconds=0, duration_seconds=4, narration="First", image_asset=image_id),
+        Scene(
+            index=2, start_seconds=4, duration_seconds=3, narration="Second", audio_asset=audio_id
+        ),
+        Scene(
+            index=1, start_seconds=0, duration_seconds=4, narration="First", image_asset=image_id
+        ),
     ]
 
     timeline = build_timeline(store, project, scenes)

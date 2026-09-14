@@ -105,7 +105,10 @@ class FFmpegRenderer:
                 "command": command,
                 "filter_complex": filter_complex,
                 "artifact_id": str(artifact.id),
-                "recovery": {"attempts": len(recovery_strategies), "strategies": recovery_strategies},
+                "recovery": {
+                    "attempts": len(recovery_strategies),
+                    "strategies": recovery_strategies,
+                },
             },
         )
         return artifact
@@ -123,12 +126,18 @@ class FFmpegRenderer:
         concat_inputs: list[str] = []
         input_index = 0
         for scene_number, scene in enumerate(timeline.scenes):
-            media = assets.get(scene.video_asset or scene.image_asset) if (scene.video_asset or scene.image_asset) else None
+            media = (
+                assets.get(scene.video_asset or scene.image_asset)
+                if (scene.video_asset or scene.image_asset)
+                else None
+            )
             if media is None:
                 raise VideoAgentError(f"scene {scene.index} has no renderable image/video artifact")
             media_path = _resolve_artifact_path(directory, media)
             if media.type == "scene_image":
-                command.extend(["-loop", "1", "-t", _seconds(scene.duration_seconds), "-i", str(media_path)])
+                command.extend(
+                    ["-loop", "1", "-t", _seconds(scene.duration_seconds), "-i", str(media_path)]
+                )
             else:
                 command.extend(["-i", str(media_path)])
             video_input = input_index
@@ -141,7 +150,16 @@ class FFmpegRenderer:
                 audio_input = input_index
                 input_index += 1
             else:
-                command.extend(["-f", "lavfi", "-t", _seconds(scene.duration_seconds), "-i", "anullsrc=r=48000:cl=stereo"])
+                command.extend(
+                    [
+                        "-f",
+                        "lavfi",
+                        "-t",
+                        _seconds(scene.duration_seconds),
+                        "-i",
+                        "anullsrc=r=48000:cl=stereo",
+                    ]
+                )
                 audio_input = input_index
                 input_index += 1
 
@@ -159,40 +177,44 @@ class FFmpegRenderer:
         concat = "".join(concat_inputs)
         filters.append(f"{concat}concat=n={len(timeline.scenes)}:v=1:a=1[v][a]")
         filter_complex = ";".join(filters)
-        command.extend([
-            "-filter_complex",
-            filter_complex,
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "medium",
-            "-crf",
-            "18",
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-r",
-            str(timeline.fps),
-            "-movflags",
-            "+faststart",
-            "-t",
-            _seconds(timeline.duration_seconds),
-            str(output),
-        ])
+        command.extend(
+            [
+                "-filter_complex",
+                filter_complex,
+                "-map",
+                "[v]",
+                "-map",
+                "[a]",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "medium",
+                "-crf",
+                "18",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-b:a",
+                "192k",
+                "-r",
+                str(timeline.fps),
+                "-movflags",
+                "+faststart",
+                "-t",
+                _seconds(timeline.duration_seconds),
+                str(output),
+            ]
+        )
         return command, filter_complex
 
 
 def _load_artifacts(directory: Path) -> dict[UUID, Artifact]:
     artifacts: dict[UUID, Artifact] = {}
     for path in directory.glob("*.json"):
-        if path.name in {"project.json", "timeline.json", "render.json"} or path.name.startswith("."):
+        if path.name in {"project.json", "timeline.json", "render.json"} or path.name.startswith(
+            "."
+        ):
             continue
         try:
             payload = json.loads(path.read_text(encoding="utf-8"))

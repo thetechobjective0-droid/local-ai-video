@@ -33,9 +33,13 @@ def resolve_video_fallback(
     try:
         capability = get_provider_capabilities(fallback_name).video
     except ValueError as exc:
-        raise VideoAgentError(f"video fallback provider is not registered: {fallback_name}") from exc
+        raise VideoAgentError(
+            f"video fallback provider is not registered: {fallback_name}"
+        ) from exc
     if not capability.image_motion:
-        raise VideoAgentError(f"video fallback provider does not support image motion: {fallback_name}")
+        raise VideoAgentError(
+            f"video fallback provider does not support image motion: {fallback_name}"
+        )
     return FallbackDecision(
         provider=fallback,
         primary_provider=primary_name,

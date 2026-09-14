@@ -21,10 +21,14 @@ def validate_audio_quality(
         raise ValueError("max_silence_seconds must be positive")
     command = [
         ffmpeg_command,
-        "-v", "info",
-        "-i", str(path),
-        "-af", f"volumedetect,silencedetect=noise={silence_threshold_db}dB:d={max_silence_seconds}",
-        "-f", "null",
+        "-v",
+        "info",
+        "-i",
+        str(path),
+        "-af",
+        f"volumedetect,silencedetect=noise={silence_threshold_db}dB:d={max_silence_seconds}",
+        "-f",
+        "null",
         "-",
     ]
     try:

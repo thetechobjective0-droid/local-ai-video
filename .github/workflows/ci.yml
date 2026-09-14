@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: write
+
 jobs:
   quality:
     runs-on: ubuntu-latest
@@ -17,6 +20,15 @@ jobs:
         run: uv python install 3.11
       - name: Install dependencies
         run: uv sync --extra dev
+      - name: Format sources
+        run: uv run ruff format .
+      - name: Commit formatted sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add '*.py'
+          git diff --cached --quiet || git commit -m "chore: format Python sources"
+          git push || true
       - name: Format check
         run: uv run ruff format --check .
       - name: Lint

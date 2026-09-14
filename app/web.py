@@ -67,10 +67,16 @@ def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
 
 
 def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
-    store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
+    store.write_json(
+        store.project_dir(project_id),
+        f"scene-{scene.index:04d}.json",
+        scene.model_dump(mode="json"),
+    )
 
 
-def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[Path, str]:
+def _artifact_path(
+    store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
+) -> tuple[Path, str]:
     scene = _scene(store, project_id, scene_id)
     manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
     if not manifest.is_file():
@@ -124,9 +130,19 @@ def create_project(request: CreateProjectRequest) -> dict[str, object]:
     provider.require_health()
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
-    directory = create_plan(provider, store, request.prompt, request.duration, request.style, request.aspect_ratio,
-                            model=config.llm.model, temperature=config.llm.temperature, top_p=config.llm.top_p,
-                            top_k=config.llm.top_k, quality_profile=config.runtime.profile)
+    directory = create_plan(
+        provider,
+        store,
+        request.prompt,
+        request.duration,
+        request.style,
+        request.aspect_ratio,
+        model=config.llm.model,
+        temperature=config.llm.temperature,
+        top_p=config.llm.top_p,
+        top_k=config.llm.top_k,
+        quality_profile=config.runtime.profile,
+    )
     return {"project_id": directory.name, "path": str(directory)}
 
 
@@ -143,7 +159,9 @@ def project(project_id: UUID) -> dict[str, object]:
         if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
-            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json"))
+            scenes.append(
+                Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json")
+            )
         except (OSError, ValueError):
             continue
     return {"project": value.model_dump(mode="json"), "scenes": scenes}
@@ -158,8 +176,15 @@ def resume(project_id: UUID) -> dict[str, str]:
     provider.require_health()
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
-    directory = resume_plan(provider, store, project_id, model=config.llm.model, temperature=config.llm.temperature,
-                            top_p=config.llm.top_p, top_k=config.llm.top_k)
+    directory = resume_plan(
+        provider,
+        store,
+        project_id,
+        model=config.llm.model,
+        temperature=config.llm.temperature,
+        top_p=config.llm.top_p,
+        top_k=config.llm.top_k,
+    )
     return {"project_id": directory.name, "path": str(directory)}
 
 
@@ -228,7 +253,10 @@ def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, object]:
             artifact = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        result["artifacts"][suffix] = {**artifact, "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}"}
+        result["artifacts"][suffix] = {
+            **artifact,
+            "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}",
+        }
     return result
 
 
@@ -239,32 +267,69 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
     scene = _scene(store, project_id, scene_id)
     if request.stage == "image":
         provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
-        result = generate_scene_image_with_recovery(provider, store, project_id, scene,
-                                                     model=config.image.model_path.name,
-                                                     width=config.image.width, height=config.image.height,
-                                                     steps=config.image.steps, guidance_scale=config.image.guidance_scale)
-        scene = result.scene.model_copy(update={"metadata": {**result.scene.metadata,
-            "image_recovery": {"attempts": result.attempts, "strategies": list(result.strategies)}}})
+        result = generate_scene_image_with_recovery(
+            provider,
+            store,
+            project_id,
+            scene,
+            model=config.image.model_path.name,
+            width=config.image.width,
+            height=config.image.height,
+            steps=config.image.steps,
+            guidance_scale=config.image.guidance_scale,
+        )
+        scene = result.scene.model_copy(
+            update={
+                "metadata": {
+                    **result.scene.metadata,
+                    "image_recovery": {
+                        "attempts": result.attempts,
+                        "strategies": list(result.strategies),
+                    },
+                }
+            }
+        )
         _persist_scene(store, project_id, scene)
         attempts, strategies = result.attempts, list(result.strategies)
     elif request.stage == "audio":
         provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
-        _, updated_scene = generate_scene_audio(provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+        _, updated_scene = generate_scene_audio(
+            provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate
+        )
         scene = updated_scene
         attempts, strategies = 1, ["original"]
     else:
         provider = build_video_provider(config)
-        result = generate_scene_video_with_recovery(provider, store, project_id, scene,
-                                                     width=config.video.width, height=config.video.height,
-                                                     fps=config.video.fps)
-        scene = result.scene.model_copy(update={"metadata": {**result.scene.metadata,
-            "video_recovery": {"attempts": result.attempts, "strategies": list(result.strategies)}}})
+        result = generate_scene_video_with_recovery(
+            provider,
+            store,
+            project_id,
+            scene,
+            width=config.video.width,
+            height=config.video.height,
+            fps=config.video.fps,
+        )
+        scene = result.scene.model_copy(
+            update={
+                "metadata": {
+                    **result.scene.metadata,
+                    "video_recovery": {
+                        "attempts": result.attempts,
+                        "strategies": list(result.strategies),
+                    },
+                }
+            }
+        )
         _persist_scene(store, project_id, scene)
         attempts, strategies = result.attempts, list(result.strategies)
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    return {"scene": scene.model_dump(mode="json"), "attempts": attempts,
-            "strategies": strategies, "qa_passed": report.passed}
+    return {
+        "scene": scene.model_dump(mode="json"),
+        "attempts": attempts,
+        "strategies": strategies,
+        "qa_passed": report.passed,
+    }
 
 
 @app.get("/api/projects/{project_id}/video")

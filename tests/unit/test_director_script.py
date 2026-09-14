@@ -15,8 +15,18 @@ class FakeProvider:
 
 
 def test_create_script_from_brief() -> None:
-    provider = FakeProvider('{"title":"AI","narration":"AI agents plan and act.","estimated_duration_seconds":5}')
-    brief = CreativeBrief(title="AI", objective="Explain", audience="general", tone="clear", language="en", duration_seconds=5, visual_style="clean")
+    provider = FakeProvider(
+        '{"title":"AI","narration":"AI agents plan and act.","estimated_duration_seconds":5}'
+    )
+    brief = CreativeBrief(
+        title="AI",
+        objective="Explain",
+        audience="general",
+        tone="clear",
+        language="en",
+        duration_seconds=5,
+        visual_style="clean",
+    )
     result = build_script(provider, brief)
     assert isinstance(result, Script)
     assert result.estimated_duration_seconds == 5
