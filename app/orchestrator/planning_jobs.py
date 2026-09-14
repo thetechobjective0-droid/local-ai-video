@@ -13,7 +13,7 @@ import tempfile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import load_config
-from app.director.project import _run_plan
+from app.director.project import _run_plan, resume_plan
 from app.models.project import ProjectStatus
 from app.providers.ollama import OllamaProvider
 from app.storage.filesystem import FilesystemStore
@@ -98,18 +98,37 @@ class PlanningJobManager:
             provider.require_health()
             provider.require_model(config.llm.model)
             project = self.store.load_project(job.project_id)
-            _run_plan(
-                provider,
-                self.store,
-                self.store.project_dir(job.project_id),
-                project,
-                model=config.llm.model,
-                temperature=config.llm.temperature,
-                top_p=config.llm.top_p,
-                top_k=config.llm.top_k,
-                start_from="brief",
-            )
-            self._update(job_id, state="completed", completed_stage="storyboard")
+            try:
+                _run_plan(
+                    provider,
+                    self.store,
+                    self.store.project_dir(job.project_id),
+                    project,
+                    model=config.llm.model,
+                    temperature=config.llm.temperature,
+                    top_p=config.llm.top_p,
+                    top_k=config.llm.top_k,
+                    start_from="brief",
+                )
+            except Exception as first_error:
+                # Model output can fail transiently. Retry once using any valid artifacts
+                # already persisted by the first attempt instead of starting from scratch.
+                try:
+                    resume_plan(
+                        provider,
+                        self.store,
+                        str(job.project_id),
+                        model=config.llm.model,
+                        temperature=config.llm.temperature,
+                        top_p=config.llm.top_p,
+                        top_k=config.llm.top_k,
+                    )
+                except Exception as retry_error:
+                    raise RuntimeError(
+                        f"planning failed after retry: first attempt: {first_error}; "
+                        f"retry: {retry_error}"
+                    ) from retry_error
+            self._update(job_id, state="completed", completed_stage="storyboard", error=None)
         except Exception as exc:
             try:
                 self._update(job_id, state="failed", error=str(exc))
