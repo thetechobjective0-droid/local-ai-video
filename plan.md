@@ -30,6 +30,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - explicit safe project-relative artifact path handling
 - asynchronous project creation: filesystem metadata is returned immediately while Ollama planning runs in a local background worker
 - planning job status endpoint
+- QA endpoint serializes the dataclass report correctly for FastAPI JSON responses
 - API/UI launch and operational documentation
 
 ### Deferred by design
