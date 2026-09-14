@@ -4,7 +4,7 @@ from uuid import UUID
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.config import load_config
@@ -16,6 +16,7 @@ from app.providers.ollama import OllamaProvider
 from app.qa.project import validate_project
 from app.qa.report import write_qa_report
 from app.storage.filesystem import FilesystemStore
+from app.web_ui import HTML
 
 app = FastAPI(title="Local AI Video", version="0.1.0")
 
@@ -50,6 +51,12 @@ def _local_config():
     if not config.runtime.local_only:
         raise HTTPException(status_code=503, detail="local_only must remain enabled")
     return config
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    """Serve the local dashboard."""
+    return HTML
 
 
 @app.get("/api/health")
