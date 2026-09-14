@@ -11,12 +11,6 @@ echo " Local AI Video"
 echo "========================================"
 echo
 
-echo "→ Switching to main branch..."
-git checkout main
-
-echo "→ Updating main branch..."
-git pull --ff-only origin main
-
 echo "→ Syncing dependencies..."
 uv sync --extra dev --extra image
 
