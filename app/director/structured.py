@@ -66,5 +66,5 @@ def generate_validated(
             last_error = exc
 
     raise StructuredOutputError(
-        f"structured output remained invalid after {repair_attempts} repair attempt(s)"
+        f"structured output remained invalid after {repair_attempts} repair attempt(s): {last_error}"
     ) from last_error
