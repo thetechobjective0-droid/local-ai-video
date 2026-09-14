@@ -34,23 +34,28 @@ app = FastAPI(title="Local AI Video", version="0.1.0")
 app.include_router(job_router)
 logger = logging.getLogger(__name__)
 
+
 @app.on_event("startup")
 def startup_logging() -> None:
     configure_logging()
     logger.info("[web] application startup complete")
 
+
 class RegenerateRequest(BaseModel):
     model_config = {"extra": "forbid"}
     stage: str = Field(default="video", pattern="^(image|audio|video)$")
 
+
 def _store() -> FilesystemStore:
     return FilesystemStore(load_config(None).storage.root)
+
 
 def _local_config() -> AppConfig:
     config = load_config(None)
     if not config.runtime.local_only:
         raise HTTPException(status_code=503, detail="local_only must remain enabled")
     return config
+
 
 def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
     for path in sorted(store.project_dir(project_id).glob("scene-*.json")):
@@ -64,10 +69,18 @@ def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
             return scene
     raise HTTPException(status_code=404, detail="scene not found")
 
-def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
-    store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
 
-def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[Path, str]:
+def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
+    store.write_json(
+        store.project_dir(project_id),
+        f"scene-{scene.index:04d}.json",
+        scene.model_dump(mode="json"),
+    )
+
+
+def _artifact_path(
+    store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
+) -> tuple[Path, str]:
     scene = _scene(store, project_id, scene_id)
     manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
     if not manifest.is_file():
@@ -84,21 +97,26 @@ def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suf
         raise HTTPException(status_code=404, detail="artifact file not found")
     return path, str(artifact_id)
 
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
     logger.info("[web] GET /")
     return HTML
+
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
     logger.info("[web] GET /api/health")
     return {"status": "ok", "mode": "local-only"}
 
+
 @app.get("/api/projects")
 def projects() -> list[dict[str, Any]]:
     store = _store()
     result: list[dict[str, Any]] = []
-    for path in sorted((store.root / "projects").iterdir() if (store.root / "projects").exists() else []):
+    for path in sorted(
+        (store.root / "projects").iterdir() if (store.root / "projects").exists() else []
+    ):
         project_file = path / "project.json"
         if not path.is_dir() or not project_file.is_file():
             continue
@@ -109,6 +127,7 @@ def projects() -> list[dict[str, Any]]:
         result.append(project.model_dump(mode="json"))
     logger.info("[web] GET /api/projects count=%s", len(result))
     return result
+
 
 @app.get("/api/projects/{project_id}")
 def project(project_id: UUID) -> dict[str, Any]:
@@ -124,11 +143,16 @@ def project(project_id: UUID) -> dict[str, Any]:
         if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
-            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json"))
+            scenes.append(
+                Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json")
+            )
         except (OSError, ValueError):
             continue
-    logger.info("[web] GET project=%s scenes=%s status=%s", project_id, len(scenes), value.status.value)
+    logger.info(
+        "[web] GET project=%s scenes=%s status=%s", project_id, len(scenes), value.status.value
+    )
     return {"project": value.model_dump(mode="json"), "scenes": scenes}
+
 
 @app.post("/api/projects/{project_id}/resume")
 def resume(project_id: UUID) -> dict[str, str]:
@@ -141,12 +165,21 @@ def resume(project_id: UUID) -> dict[str, str]:
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
     try:
-        directory = resume_plan(provider, store, str(project_id), model=config.llm.model, temperature=config.llm.temperature, top_p=config.llm.top_p, top_k=config.llm.top_k)
+        directory = resume_plan(
+            provider,
+            store,
+            str(project_id),
+            model=config.llm.model,
+            temperature=config.llm.temperature,
+            top_p=config.llm.top_p,
+            top_k=config.llm.top_k,
+        )
     except Exception:
         logger.exception("[web] resume FAILED project=%s", project_id)
         raise
     logger.info("[web] resume COMPLETE project=%s", project_id)
     return {"project_id": directory.name, "path": str(directory)}
+
 
 @app.get("/api/projects/{project_id}/qa")
 def qa(project_id: UUID) -> dict[str, Any]:
@@ -156,8 +189,11 @@ def qa(project_id: UUID) -> dict[str, Any]:
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="project not found") from None
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    logger.info("[web] QA project=%s passed=%s failures=%s", project_id, report.passed, len(report.failures))
+    logger.info(
+        "[web] QA project=%s passed=%s failures=%s", project_id, report.passed, len(report.failures)
+    )
     return asdict(report)
+
 
 @app.get("/api/projects/{project_id}/timeline")
 def timeline(project_id: UUID) -> dict[str, Any]:
@@ -176,6 +212,7 @@ def timeline(project_id: UUID) -> dict[str, Any]:
     logger.info("[web] timeline loaded project=%s", project_id)
     return data
 
+
 @app.get("/api/projects/{project_id}/subtitles/{format}")
 def subtitles(project_id: UUID, format: str) -> FileResponse:
     if format not in {"srt", "vtt"}:
@@ -187,6 +224,7 @@ def subtitles(project_id: UUID, format: str) -> FileResponse:
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
     return FileResponse(path, media_type=media_type, filename=path.name)
 
+
 @app.head("/api/projects/{project_id}/subtitles/{format}")
 def subtitles_head(project_id: UUID, format: str) -> Response:
     if format not in {"srt", "vtt"}:
@@ -195,22 +233,29 @@ def subtitles_head(project_id: UUID, format: str) -> Response:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="subtitle file not found")
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
-    return Response(status_code=200, headers={"content-type": media_type, "content-length": str(path.stat().st_size)})
+    return Response(
+        status_code=200,
+        headers={"content-type": media_type, "content-length": str(path.stat().st_size)},
+    )
+
 
 @app.get("/api/projects/{project_id}/scenes/{scene_id}/image")
 def scene_image(project_id: UUID, scene_id: UUID) -> FileResponse:
     path, _ = _artifact_path(_store(), project_id, scene_id, "image")
     return FileResponse(path, media_type="image/png")
 
+
 @app.get("/api/projects/{project_id}/scenes/{scene_id}/audio")
 def scene_audio(project_id: UUID, scene_id: UUID) -> FileResponse:
     path, _ = _artifact_path(_store(), project_id, scene_id, "audio")
     return FileResponse(path, media_type="audio/wav")
 
+
 @app.get("/api/projects/{project_id}/scenes/{scene_id}/video")
 def scene_video(project_id: UUID, scene_id: UUID) -> FileResponse:
     path, _ = _artifact_path(_store(), project_id, scene_id, "video")
     return FileResponse(path, media_type="video/mp4")
+
 
 @app.get("/api/projects/{project_id}/scenes/{scene_id}/artifacts")
 def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, Any]:
@@ -225,54 +270,144 @@ def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, Any]:
             artifact = json.loads(manifest.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        artifacts[suffix] = {**artifact, "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}"}
-    logger.info("[web] artifacts project=%s scene=%s types=%s", project_id, scene_id, ",".join(artifacts))
+        artifacts[suffix] = {
+            **artifact,
+            "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}",
+        }
+    logger.info(
+        "[web] artifacts project=%s scene=%s types=%s", project_id, scene_id, ",".join(artifacts)
+    )
     return {"scene_id": str(scene.id), "artifacts": artifacts}
+
 
 @app.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
 def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> dict[str, Any]:
-    logger.info("[web] regenerate START project=%s scene=%s stage=%s", project_id, scene_id, request.stage)
+    logger.info(
+        "[web] regenerate START project=%s scene=%s stage=%s", project_id, scene_id, request.stage
+    )
     config = _local_config()
     store = FilesystemStore(config.storage.root)
     scene = _scene(store, project_id, scene_id)
     try:
         if request.stage == "image":
-            logger.info("[web] image provider init model=%s device=%s", config.image.model_path, config.image.device)
-            image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
-            image_result = generate_scene_image_with_recovery(image_provider, store, project_id, scene, model=config.image.model_path.name, width=config.image.width, height=config.image.height, steps=config.image.steps, guidance_scale=config.image.guidance_scale)
-            scene = image_result.scene.model_copy(update={"metadata": {**image_result.scene.metadata, "image_recovery": {"attempts": image_result.attempts, "strategies": list(image_result.strategies)}}})
+            logger.info(
+                "[web] image provider init model=%s device=%s",
+                config.image.model_path,
+                config.image.device,
+            )
+            image_provider = DiffusersImageProvider(
+                config.image.model_path, device=config.image.device
+            )
+            image_result = generate_scene_image_with_recovery(
+                image_provider,
+                store,
+                project_id,
+                scene,
+                model=config.image.model_path.name,
+                width=config.image.width,
+                height=config.image.height,
+                steps=config.image.steps,
+                guidance_scale=config.image.guidance_scale,
+            )
+            scene = image_result.scene.model_copy(
+                update={
+                    "metadata": {
+                        **image_result.scene.metadata,
+                        "image_recovery": {
+                            "attempts": image_result.attempts,
+                            "strategies": list(image_result.strategies),
+                        },
+                    }
+                }
+            )
             _persist_scene(store, project_id, scene)
             attempts, strategies = image_result.attempts, list(image_result.strategies)
         elif request.stage == "audio":
-            logger.info("[web] audio provider init voice=%s rate=%s", config.tts.voice, config.tts.rate)
+            logger.info(
+                "[web] audio provider init voice=%s rate=%s", config.tts.voice, config.tts.rate
+            )
             audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
-            _, updated_scene = generate_scene_audio(audio_provider, store, project_id, scene, voice=config.tts.voice, rate=config.tts.rate)
+            _, updated_scene = generate_scene_audio(
+                audio_provider,
+                store,
+                project_id,
+                scene,
+                voice=config.tts.voice,
+                rate=config.tts.rate,
+            )
             scene = updated_scene
             attempts, strategies = 1, ["original"]
         else:
             logger.info("[web] video provider init provider=%s", config.video.provider)
             video_provider = build_video_provider(config)
-            video_result = generate_scene_video_with_recovery(video_provider, store, project_id, scene, width=config.video.width, height=config.video.height, fps=config.video.fps)
-            scene = video_result.scene.model_copy(update={"metadata": {**video_result.scene.metadata, "video_recovery": {"attempts": video_result.attempts, "strategies": list(video_result.strategies)}}})
+            video_result = generate_scene_video_with_recovery(
+                video_provider,
+                store,
+                project_id,
+                scene,
+                width=config.video.width,
+                height=config.video.height,
+                fps=config.video.fps,
+            )
+            scene = video_result.scene.model_copy(
+                update={
+                    "metadata": {
+                        **video_result.scene.metadata,
+                        "video_recovery": {
+                            "attempts": video_result.attempts,
+                            "strategies": list(video_result.strategies),
+                        },
+                    }
+                }
+            )
             _persist_scene(store, project_id, scene)
             attempts, strategies = video_result.attempts, list(video_result.strategies)
     except ProviderUnavailableError as exc:
-        logger.warning("[web] regenerate unavailable project=%s scene=%s stage=%s error=%s", project_id, scene_id, request.stage, exc)
-        raise HTTPException(status_code=503, detail={"code": "provider_unavailable", "message": str(exc)}) from None
+        logger.warning(
+            "[web] regenerate unavailable project=%s scene=%s stage=%s error=%s",
+            project_id,
+            scene_id,
+            request.stage,
+            exc,
+        )
+        raise HTTPException(
+            status_code=503, detail={"code": "provider_unavailable", "message": str(exc)}
+        ) from None
     except Exception:
-        logger.exception("[web] regenerate FAILED project=%s scene=%s stage=%s", project_id, scene_id, request.stage)
+        logger.exception(
+            "[web] regenerate FAILED project=%s scene=%s stage=%s",
+            project_id,
+            scene_id,
+            request.stage,
+        )
         raise
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    logger.info("[web] regenerate COMPLETE project=%s scene=%s stage=%s qa_passed=%s", project_id, scene_id, request.stage, report.passed)
-    return {"scene": scene.model_dump(mode="json"), "attempts": attempts, "strategies": strategies, "qa_passed": report.passed}
+    logger.info(
+        "[web] regenerate COMPLETE project=%s scene=%s stage=%s qa_passed=%s",
+        project_id,
+        scene_id,
+        request.stage,
+        report.passed,
+    )
+    return {
+        "scene": scene.model_dump(mode="json"),
+        "attempts": attempts,
+        "strategies": strategies,
+        "qa_passed": report.passed,
+    }
+
 
 @app.head("/api/projects/{project_id}/video")
 def final_video_head(project_id: UUID) -> Response:
     path = _store().project_dir(project_id) / "final.mp4"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="final video not found")
-    return Response(status_code=200, headers={"content-type": "video/mp4", "content-length": str(path.stat().st_size)})
+    return Response(
+        status_code=200,
+        headers={"content-type": "video/mp4", "content-length": str(path.stat().st_size)},
+    )
+
 
 @app.get("/api/projects/{project_id}/video")
 def final_video(project_id: UUID) -> FileResponse:
@@ -280,6 +415,7 @@ def final_video(project_id: UUID) -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="final video not found")
     return FileResponse(path, media_type="video/mp4", filename="final.mp4")
+
 
 def run() -> None:
     configure_logging()
