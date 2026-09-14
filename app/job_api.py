@@ -3,7 +3,10 @@
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
+from app.config import load_config
+from app.models.project import VideoProject
 from app.orchestrator.jobs import get_job_manager
 from app.orchestrator.planning_jobs import get_planning_job_manager
 from app.storage.filesystem import FilesystemStore
@@ -11,16 +14,27 @@ from app.storage.filesystem import FilesystemStore
 router = APIRouter()
 
 
-def _manager():
-    from app.config import load_config
+class CreateProjectRequest(BaseModel):
+    """Validated request for asynchronous project creation."""
 
-    return get_job_manager(FilesystemStore(load_config(None).storage.root))
+    model_config = {"extra": "forbid"}
+
+    prompt: str = Field(min_length=1)
+    duration: float = Field(default=60.0, gt=0)
+    style: str = Field(default="cinematic", min_length=1)
+    aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
+
+
+def _store() -> FilesystemStore:
+    return FilesystemStore(load_config(None).storage.root)
+
+
+def _manager():
+    return get_job_manager(_store())
 
 
 def _planning_manager():
-    from app.config import load_config
-
-    return get_planning_job_manager(FilesystemStore(load_config(None).storage.root))
+    return get_planning_job_manager(_store())
 
 
 @router.post("/api/projects/{project_id}/jobs/media", status_code=202)
@@ -49,30 +63,24 @@ def list_media_jobs(project_id: UUID) -> list[dict[str, object]]:
 
 
 @router.post("/api/projects", status_code=202)
-def create_project_async(request: dict[str, object]) -> dict[str, object]:
+def create_project_async(request: CreateProjectRequest) -> dict[str, object]:
     """Create project metadata immediately and plan it in the local worker."""
-    from app.models.project import VideoProject
-
-    config = __import__("app.config", fromlist=["load_config"]).load_config(None)
+    config = load_config(None)
     if not config.runtime.local_only:
         raise HTTPException(status_code=503, detail="local_only must remain enabled")
     if config.llm.provider != "ollama":
         raise HTTPException(status_code=503, detail="local Ollama provider is required")
 
-    try:
-        project = VideoProject(
-            source_prompt=str(request["prompt"]),
-            duration_seconds=float(request.get("duration", 60.0)),
-            aspect_ratio=str(request.get("aspect_ratio", "16:9")),
-            style=str(request.get("style", "cinematic")),
-            quality_profile=config.runtime.profile,
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
+    project = VideoProject(
+        source_prompt=request.prompt,
+        duration_seconds=request.duration,
+        aspect_ratio=request.aspect_ratio,
+        style=request.style,
+        quality_profile=config.runtime.profile,
+    )
     store = FilesystemStore(config.storage.root)
     directory = store.create_project(project)
-    job = _planning_manager().submit(project.id)
+    job = get_planning_job_manager(store).submit(project.id)
     return {
         "project_id": str(project.id),
         "path": str(directory),
