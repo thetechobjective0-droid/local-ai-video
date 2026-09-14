@@ -25,7 +25,8 @@ def check_platform() -> CheckResult:
 
 
 def check_python() -> CheckResult:
-    return CheckResult("python", sys.version.split()[0], sys.version.split()[0] != "")
+    version = sys.version.split()[0]
+    return CheckResult("python", version != "", version)
 
 
 def check_command(name: str) -> CheckResult:
