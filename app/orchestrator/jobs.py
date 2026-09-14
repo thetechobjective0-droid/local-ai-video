@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from threading import Lock
 from uuid import UUID, uuid4
+import tempfile
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -54,8 +56,6 @@ class MediaJobManager:
 
     def _save(self, job: MediaJob) -> MediaJob:
         path = self._path(job.id)
-        import json
-        import tempfile
         payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
         with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False) as temp:
             temp.write(payload)
@@ -64,7 +64,6 @@ class MediaJobManager:
         return job
 
     def get(self, job_id: UUID) -> MediaJob:
-        import json
         path = self._path(job_id)
         if not path.is_file():
             raise FileNotFoundError(str(job_id))
@@ -83,8 +82,6 @@ class MediaJobManager:
         return sorted(jobs, key=lambda item: item.created_at, reverse=True)
 
     def submit(self, project_id: UUID) -> MediaJob:
-        config = load_config(None)
-        store = self.store
         scenes = self._load_scenes(project_id)
         now = datetime.now(timezone.utc)
         job = MediaJob(id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now, scene_count=len(scenes))
@@ -121,22 +118,18 @@ class MediaJobManager:
             video_provider = build_video_provider(config)
             image_provider = DiffusersImageProvider(config.image.model_path, device=config.image.device)
             capability = get_provider_capabilities(config.video.provider).video
+
+            def progress(completed: int, total: int) -> None:
+                self._update(job_id, completed_scenes=completed, scene_count=total)
+
             generate_project_media(
-                self.store,
-                job.project_id,
-                self._load_scenes(job.project_id),
-                video_provider=video_provider,
-                image_provider=image_provider,
-                image_model=config.image.model_path.name,
-                image_width=config.image.width,
-                image_height=config.image.height,
-                image_steps=config.image.steps,
-                image_guidance_scale=config.image.guidance_scale,
-                video_capability=capability,
-                fallback_provider=build_video_fallback(config),
-                width=config.video.width,
-                height=config.video.height,
-                fps=config.video.fps,
+                self.store, job.project_id, self._load_scenes(job.project_id),
+                video_provider=video_provider, image_provider=image_provider,
+                image_model=config.image.model_path.name, image_width=config.image.width,
+                image_height=config.image.height, image_steps=config.image.steps,
+                image_guidance_scale=config.image.guidance_scale, video_capability=capability,
+                fallback_provider=build_video_fallback(config), width=config.video.width,
+                height=config.video.height, fps=config.video.fps, progress_callback=progress,
             )
             self._update(job_id, state="completed", completed_scenes=job.scene_count, completed_at=datetime.now(timezone.utc))
         except Exception as exc:
