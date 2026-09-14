@@ -2,7 +2,7 @@
 
 ## Current implementation checkpoint
 
-**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. Media submission is now explicitly gated on planning completion so the dashboard cannot race the storyboard worker.
+**Phases 0–10 repository implementation are complete. Phase 11 web implementation is complete. Phase 12 local job orchestration is implemented; target-machine acceptance remains pending.** The web layer remains a thin local-only interface over existing application services. Long-running media generation now runs in persistent, JSON-backed local workers with browser status polling. Project planning is also asynchronous so HTTP project creation is not blocked by the three-stage Ollama Director pipeline. Media submission is explicitly gated on planning completion so the dashboard cannot race the storyboard worker. Planning jobs also perform one bounded retry from persisted artifacts when the first model attempt fails.
 
 The detailed phased plan below is the source of truth and must stay synchronized with meaningful repository commits.
 
@@ -84,6 +84,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - media orchestration tests create the required project manifest before lifecycle transitions
 - subtitle tests explicitly cover deterministic max-character wrapping
 - Ruff CI enforces correctness-oriented `E`, `F`, and `B` rules
+- planning worker retries one failed Director run using persisted valid artifacts before marking the project failed
 - Phase 12 operational documentation in `docs/phase-12-jobs.md`
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
