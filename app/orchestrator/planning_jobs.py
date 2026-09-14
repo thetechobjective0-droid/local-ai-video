@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Lock
 from uuid import UUID, uuid4
 import tempfile
+import logging
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -17,6 +18,8 @@ from app.director.project import _run_plan, resume_plan
 from app.models.project import ProjectStatus
 from app.providers.ollama import OllamaProvider
 from app.storage.filesystem import FilesystemStore
+
+logger = logging.getLogger(__name__)
 
 
 class PlanningJob(BaseModel):
@@ -37,6 +40,7 @@ class PlanningJobManager:
         self.store = store
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-agent-plan")
         self._lock = Lock()
+        logger.info("[planning] manager initialized: worker_count=1 storage=%s", store.root)
 
     def _path(self, job_id: UUID) -> Path:
         jobs_dir = self.store.root / "planning-jobs"
@@ -56,9 +60,14 @@ class PlanningJobManager:
 
     def _update(self, job_id: UUID, **changes: object) -> PlanningJob:
         current = self.get(job_id)
-        return self._save(
-            current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
+        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
+        logger.info(
+            "[planning] job=%s state=%s%s",
+            job_id,
+            updated.state,
+            f" completed_stage={updated.completed_stage}" if updated.completed_stage else "",
         )
+        return self._save(updated)
 
     def get(self, job_id: UUID) -> PlanningJob:
         path = self._path(job_id)
@@ -84,21 +93,45 @@ class PlanningJobManager:
             id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now
         )
         self._save(job)
+        logger.info("[planning] submitted job=%s project=%s state=queued", job.id, project_id)
         self._executor.submit(self._run, job.id)
         return job
 
     def _run(self, job_id: UUID) -> None:
         self._update(job_id, state="running")
         job = self.get(job_id)
+        logger.info("[planning] started job=%s project=%s", job.id, job.project_id)
         try:
+            logger.info("[planning] loading configuration job=%s", job_id)
             config = load_config(None)
+            logger.info(
+                "[planning] config local_only=%s provider=%s model=%s temperature=%s top_p=%s top_k=%s",
+                config.runtime.local_only,
+                config.llm.provider,
+                config.llm.model,
+                config.llm.temperature,
+                config.llm.top_p,
+                config.llm.top_k,
+            )
             if not config.runtime.local_only or config.llm.provider != "ollama":
                 raise ValueError("local Ollama provider is required")
             provider = OllamaProvider(config.llm.base_url)
+            logger.info("[planning] checking Ollama health endpoint=%s", config.llm.base_url)
             provider.require_health()
+            logger.info("[planning] Ollama health check passed")
+            logger.info("[planning] checking configured model=%s", config.llm.model)
             provider.require_model(config.llm.model)
+            logger.info("[planning] model is installed: %s", config.llm.model)
             project = self.store.load_project(job.project_id)
+            logger.info(
+                "[planning] loaded project=%s duration=%ss style=%s aspect_ratio=%s",
+                project.id,
+                project.duration_seconds,
+                project.style,
+                project.aspect_ratio,
+            )
             try:
+                logger.info("[planning] pipeline start_from=brief project=%s", project.id)
                 _run_plan(
                     provider,
                     self.store,
@@ -111,8 +144,11 @@ class PlanningJobManager:
                     start_from="brief",
                 )
             except Exception as first_error:
-                # Model output can fail transiently. Retry once using any valid artifacts
-                # already persisted by the first attempt instead of starting from scratch.
+                logger.warning(
+                    "[planning] first pipeline attempt failed project=%s error=%s; starting bounded resume retry",
+                    project.id,
+                    first_error,
+                )
                 try:
                     resume_plan(
                         provider,
@@ -124,12 +160,18 @@ class PlanningJobManager:
                         top_k=config.llm.top_k,
                     )
                 except Exception as retry_error:
+                    logger.exception(
+                        "[planning] retry failed project=%s error=%s", project.id, retry_error
+                    )
                     raise RuntimeError(
                         f"planning failed after retry: first attempt: {first_error}; "
                         f"retry: {retry_error}"
                     ) from retry_error
+                logger.info("[planning] resume retry completed project=%s", project.id)
             self._update(job_id, state="completed", completed_stage="storyboard", error=None)
+            logger.info("[planning] completed job=%s project=%s stage=storyboard", job.id, job.project_id)
         except Exception as exc:
+            logger.exception("[planning] failed job=%s project=%s error=%s", job.id, job.project_id, exc)
             try:
                 self._update(job_id, state="failed", error=str(exc))
             finally:
@@ -142,8 +184,9 @@ class PlanningJobManager:
                         "project.json",
                         project.model_dump(mode="json"),
                     )
+                    logger.info("[planning] project marked failed project=%s", project.id)
                 except (OSError, ValueError):
-                    pass
+                    logger.exception("[planning] could not persist failed project status project=%s", job.project_id)
 
 
 _manager: PlanningJobManager | None = None
