@@ -1,17 +1,20 @@
-"""Minimal local Ollama health adapter."""
+"""Local Ollama LLM adapter."""
 
 import json
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from app.exceptions import ProviderUnavailableError
+from app.exceptions import ProviderUnavailableError, VideoAgentError
+from app.providers.base import LLMRequest, LLMResponse
 
 
 class OllamaProvider:
-    """Probe an Ollama server without performing inference."""
+    """Call only an Ollama server bound to localhost by default."""
 
     def __init__(self, base_url: str = "http://127.0.0.1:11434") -> None:
         self.base_url = base_url.rstrip("/")
+        if not self.base_url.startswith(("http://127.0.0.1", "http://localhost")):
+            raise ValueError("Ollama provider must use a localhost endpoint")
 
     def health(self, timeout_seconds: float = 2.0) -> tuple[bool, str]:
         """Return availability and a concise diagnostic message."""
@@ -30,3 +33,49 @@ class OllamaProvider:
         ok, detail = self.health()
         if not ok:
             raise ProviderUnavailableError(f"Ollama unavailable: {detail}")
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        """Generate text through Ollama's local chat endpoint."""
+        model = request.model or "qwen2.5-coder:32b"
+        messages: list[dict[str, str]] = []
+        if request.system:
+            messages.append({"role": "system", "content": request.system})
+        messages.append({"role": "user", "content": request.prompt})
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "format": request.format,
+            "options": {
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "top_k": request.top_k,
+            },
+        }
+        body = json.dumps(payload).encode("utf-8")
+        http_request = Request(
+            f"{self.base_url}/api/chat",
+            data=body,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(http_request, timeout=300) as response:
+                result = json.loads(response.read().decode("utf-8"))
+        except (OSError, URLError, TimeoutError) as exc:
+            raise ProviderUnavailableError(f"Ollama generation failed: {exc}") from exc
+        except json.JSONDecodeError as exc:
+            raise VideoAgentError("Ollama returned invalid JSON") from exc
+
+        message = result.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str):
+            raise VideoAgentError("Ollama response did not contain message.content")
+        return LLMResponse(
+            text=message["content"],
+            model=str(result.get("model", model)),
+            metadata={
+                "total_duration_ns": result.get("total_duration"),
+                "prompt_eval_count": result.get("prompt_eval_count"),
+                "eval_count": result.get("eval_count"),
+            },
+        )
