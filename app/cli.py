@@ -114,6 +114,7 @@ def _write_project_qa(store: FilesystemStore, project_id: UUID, report: QAReport
 
 
 def _invalidate_scene_artifact(store: FilesystemStore, project_id: UUID, scene: Scene, stage: str) -> None:
+    """Invalidate selected media plus every downstream render-owned artifact."""
     directory = store.project_dir(project_id)
     targets = []
     if stage in {"image", "all"}:
@@ -125,6 +126,8 @@ def _invalidate_scene_artifact(store: FilesystemStore, project_id: UUID, scene: 
     for manifest, artifact in targets:
         (directory / manifest).unlink(missing_ok=True)
         (directory / artifact).unlink(missing_ok=True)
+    for downstream in ("final.mp4", "final-video.json", "render.json", "qa-report.json"):
+        (directory / downstream).unlink(missing_ok=True)
 
 
 @app.command()
