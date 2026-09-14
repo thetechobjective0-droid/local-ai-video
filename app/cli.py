@@ -8,11 +8,14 @@ import typer
 
 from app.config import load_config
 from app.director.project import create_plan, resume_plan
+from app.exceptions import VideoAgentError
 from app.generation.audio import generate_scene_audio
+from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.images import generate_scene_image
 from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
 from app.generation.video import generate_scene_video
+from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
@@ -210,10 +213,11 @@ def generate_video(project_id: str, scene_id: str, seed: int | None = typer.Opti
 def generate_media(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Generate project media using deterministic strategy and local resources."""
     app_config = load_config(config)
-    provider, store = _video_provider_and_store(config)
+    video_provider, store = _video_provider_and_store(config)
+    image_provider, _ = _image_provider_and_store(config)
     capability = get_provider_capabilities(app_config.video.provider).video
     project_uuid = UUID(project_id)
-    results = generate_project_media(store, project_uuid, _load_scenes(store, project_uuid), video_provider=provider, fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None, video_capability=capability, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps)
+    results = generate_project_media(store, project_uuid, _load_scenes(store, project_uuid), video_provider=video_provider, image_provider=image_provider, fallback_provider=FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None, video_capability=capability, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps)
     for result in results:
         suffix = " (fallback)" if result.used_fallback else ""
         typer.echo(f"Scene {result.scene.index}: {result.selected_media_type.value}{suffix}")
@@ -237,17 +241,19 @@ def qa(project_id: str, config: Path | None = typer.Option(None, "--config", exi
 
 @app.command("regenerate-scene")
 def regenerate_scene(project_id: str, scene_id: str, stage: str = typer.Option("all", "--stage", click_type=typer.Choice(["image", "audio", "video", "all"])), seed: int | None = typer.Option(None, "--seed"), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
-    """Regenerate only the selected media stage for one scene, then rerun QA."""
+    """Regenerate only the selected media stage for one scene with bounded recovery, then rerun QA."""
     app_config = load_config(config)
     project_uuid = UUID(project_id)
     scene_uuid = UUID(scene_id)
-    scene = _load_scene(FilesystemStore(app_config.storage.root), project_uuid, scene_uuid)
     store = FilesystemStore(app_config.storage.root)
+    scene = _load_scene(store, project_uuid, scene_uuid)
     _invalidate_scene_artifact(store, project_uuid, scene, stage)
     if stage in {"image", "all"}:
         image_provider, _ = _image_provider_and_store(config)
         scene = _load_scene(store, project_uuid, scene_uuid)
-        generate_scene_image(image_provider, store, project_uuid, scene, model=app_config.image.model_path.name, width=app_config.image.width, height=app_config.image.height, steps=app_config.image.steps, guidance_scale=app_config.image.guidance_scale, seed=seed)
+        image_result = generate_scene_image_with_recovery(image_provider, store, project_uuid, scene, model=app_config.image.model_path.name, width=app_config.image.width, height=app_config.image.height, steps=app_config.image.steps, guidance_scale=app_config.image.guidance_scale, seed=seed)
+        scene = image_result.scene.model_copy(update={"metadata": {**image_result.scene.metadata, "image_recovery": {"attempts": image_result.attempts, "strategies": list(image_result.strategies)}}})
+        store.write_json(store.project_dir(project_uuid), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
     if stage in {"audio", "all"}:
         tts_provider, _ = _tts_provider_and_store(config)
         scene = _load_scene(store, project_uuid, scene_uuid)
@@ -255,7 +261,16 @@ def regenerate_scene(project_id: str, scene_id: str, stage: str = typer.Option("
     if stage in {"video", "all"}:
         video_provider, _ = _video_provider_and_store(config)
         scene = _load_scene(store, project_uuid, scene_uuid)
-        generate_scene_video(video_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
+        try:
+            video_result = generate_scene_video_with_recovery(video_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
+            scene = video_result.scene.model_copy(update={"metadata": {**video_result.scene.metadata, "video_recovery": {"attempts": video_result.attempts, "strategies": list(video_result.strategies), "fallback_used": False}}})
+        except VideoAgentError:
+            fallback_provider = FFmpegVideoProvider() if app_config.video.provider != "ffmpeg_ken_burns" else None
+            if fallback_provider is None:
+                raise
+            _, scene = generate_scene_video(fallback_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
+            scene = scene.model_copy(update={"metadata": {**scene.metadata, "video_recovery": {"attempts": 3, "strategies": ["original", "reduced_duration", "reduced_duration_aggressive"], "fallback_used": True}}})
+        store.write_json(store.project_dir(project_uuid), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
     report = validate_project(store, project_uuid)
     _write_project_qa(store, project_uuid, report)
     if not report.passed:
