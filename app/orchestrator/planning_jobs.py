@@ -26,7 +26,7 @@ class PlanningJob(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID
     project_id: UUID
-    state: str = Field(pattern="^(queued|running|completed|failed)$")
+    state: str = Field(pattern="^(queued|running|completed|failed|interrupted)$")
     created_at: datetime
     updated_at: datetime
     completed_stage: str | None = None
@@ -41,11 +41,15 @@ class PlanningJobManager:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="video-agent-plan")
         self._lock = Lock()
         logger.info("[planning] manager initialized: worker_count=1 storage=%s", store.root)
+        self._recover_stale_jobs()
 
     def _path(self, job_id: UUID) -> Path:
         jobs_dir = self.store.root / "planning-jobs"
         jobs_dir.mkdir(parents=True, exist_ok=True)
-        return jobs_dir / f"{job_id}.json"
+        path = (jobs_dir / f"{job_id}.json").resolve()
+        if self.store.root.resolve() not in path.parents:
+            raise ValueError("planning job path escapes storage root")
+        return path
 
     def _save(self, job: PlanningJob) -> PlanningJob:
         path = self._path(job.id)
@@ -58,16 +62,27 @@ class PlanningJobManager:
         temp_path.replace(path)
         return job
 
-    def _update(self, job_id: UUID, **changes: object) -> PlanningJob:
-        current = self.get(job_id)
-        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
-        logger.info(
-            "[planning] job=%s state=%s%s",
-            job_id,
-            updated.state,
-            f" completed_stage={updated.completed_stage}" if updated.completed_stage else "",
-        )
-        return self._save(updated)
+    def _recover_stale_jobs(self) -> None:
+        """Persist an explicit interrupted state when a worker process has restarted."""
+        jobs_dir = self.store.root / "planning-jobs"
+        for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
+            try:
+                job = PlanningJob.model_validate_json(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if job.state in {"queued", "running"}:
+                logger.warning(
+                    "[planning] recovering stale job=%s previous_state=%s", job.id, job.state
+                )
+                self._save(
+                    job.model_copy(
+                        update={
+                            "state": "interrupted",
+                            "updated_at": datetime.now(timezone.utc),
+                            "error": "worker process restarted",
+                        }
+                    )
+                )
 
     def get(self, job_id: UUID) -> PlanningJob:
         path = self._path(job_id)
@@ -164,8 +179,7 @@ class PlanningJobManager:
                         "[planning] retry failed project=%s error=%s", project.id, retry_error
                     )
                     raise RuntimeError(
-                        f"planning failed after retry: first attempt: {first_error}; "
-                        f"retry: {retry_error}"
+                        f"planning failed after retry: first attempt: {first_error}; retry: {retry_error}"
                     ) from retry_error
                 logger.info("[planning] resume retry completed project=%s", project.id)
             self._update(job_id, state="completed", completed_stage="storyboard", error=None)
@@ -194,6 +208,17 @@ class PlanningJobManager:
                         "[planning] could not persist failed project status project=%s",
                         job.project_id,
                     )
+
+    def _update(self, job_id: UUID, **changes: object) -> PlanningJob:
+        current = self.get(job_id)
+        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
+        logger.info(
+            "[planning] job=%s state=%s%s",
+            job_id,
+            updated.state,
+            f" completed_stage={updated.completed_stage}" if updated.completed_stage else "",
+        )
+        return self._save(updated)
 
 
 _manager: PlanningJobManager | None = None
