@@ -8,22 +8,26 @@ import typer
 
 from app.config import load_config
 from app.director.project import create_plan, resume_plan
+from app.exceptions import VideoAgentError
 from app.generation.audio import generate_scene_audio
+from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.images import generate_scene_image
 from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
 from app.generation.video import generate_scene_video
+from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.health import CheckResult, run_health_checks
 from app.logging import configure_logging
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
-from app.orchestrator.media_strategy import VideoCapability
+from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
-from app.providers.ffmpeg_video import FFmpegVideoProvider
-from app.providers.ltx_video import LTXVideoProvider
+from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.providers.ollama import OllamaProvider
 from app.providers.video import VideoProvider
+from app.qa.project import QAReport, validate_project
+from app.qa.report import write_qa_report
 from app.render.ffmpeg import FFmpegRenderer
 from app.storage.filesystem import FilesystemStore
 
@@ -72,33 +76,10 @@ def _tts_provider_and_store(config_path: Path | None) -> tuple[MacOSTTSProvider,
     return provider, FilesystemStore(app_config.storage.root)
 
 
-def _video_provider_and_store(
-    config_path: Path | None,
-) -> tuple[VideoProvider, FilesystemStore, VideoCapability]:
+def _video_provider_and_store(config_path: Path | None) -> tuple[VideoProvider, FilesystemStore]:
     app_config = load_config(config_path)
     configure_logging()
-    if not app_config.runtime.local_only:
-        raise typer.BadParameter("local_only must remain enabled")
-    store = FilesystemStore(app_config.storage.root)
-    if app_config.video.provider == "ffmpeg_ken_burns":
-        return (
-            FFmpegVideoProvider(),
-            store,
-            VideoCapability(image_to_video=True, max_duration_seconds=3600),
-        )
-    if app_config.video.provider == "ltx_video":
-        if app_config.video.model_path is None:
-            raise typer.BadParameter("video.model_path is required for the local LTX provider")
-        return (
-            LTXVideoProvider(
-                app_config.video.model_path,
-                device=app_config.video.device,
-                dtype=app_config.video.dtype,
-            ),
-            store,
-            VideoCapability(image_to_video=True, max_duration_seconds=20, memory_class="high"),
-        )
-    raise typer.BadParameter(f"unsupported local video provider: {app_config.video.provider}")
+    return build_video_provider(app_config), FilesystemStore(app_config.storage.root)
 
 
 def _load_scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
@@ -130,6 +111,27 @@ def _load_scenes(store: FilesystemStore, project_id: UUID) -> list[Scene]:
     return scenes
 
 
+def _write_project_qa(store: FilesystemStore, project_id: UUID, report: QAReport) -> None:
+    write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
+
+
+def _invalidate_scene_artifact(store: FilesystemStore, project_id: UUID, scene: Scene, stage: str) -> None:
+    """Invalidate selected media plus every downstream render-owned artifact."""
+    directory = store.project_dir(project_id)
+    targets = []
+    if stage in {"image", "all"}:
+        targets.append((f"scene-{scene.index:04d}-image.json", f"images/scene-{scene.index:04d}.png"))
+    if stage in {"audio", "all"}:
+        targets.append((f"scene-{scene.index:04d}-audio.json", f"audio/scene-{scene.index:04d}.wav"))
+    if stage in {"video", "all", "image"}:
+        targets.append((f"scene-{scene.index:04d}-video.json", f"videos/scene-{scene.index:04d}.mp4"))
+    for manifest, artifact in targets:
+        (directory / manifest).unlink(missing_ok=True)
+        (directory / artifact).unlink(missing_ok=True)
+    for downstream in ("final.mp4", "final-video.json", "render.json", "qa-report.json"):
+        (directory / downstream).unlink(missing_ok=True)
+
+
 @app.command()
 def health(config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Run lightweight environment health checks."""
@@ -152,146 +154,77 @@ def doctor(config: Path | None = typer.Option(None, "--config", exists=True)) ->
 
 
 @app.command()
-def create(
-    prompt: str,
-    duration: float = typer.Option(60.0, "--duration", min=0.1),
-    style: str = typer.Option("cinematic", "--style"),
-    aspect_ratio: str = typer.Option("16:9", "--aspect-ratio"),
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def create(prompt: str, duration: float = typer.Option(60.0, "--duration", min=0.1), style: str = typer.Option("cinematic", "--style"), aspect_ratio: str = typer.Option("16:9", "--aspect-ratio"), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Create a validated local Director plan from a natural-language prompt."""
     app_config = load_config(config)
     provider, store = _provider_and_store(config)
-    directory = create_plan(
-        provider,
-        store,
-        prompt,
-        duration,
-        style,
-        aspect_ratio,
-        model=app_config.llm.model,
-        temperature=app_config.llm.temperature,
-        top_p=app_config.llm.top_p,
-        top_k=app_config.llm.top_k,
-        quality_profile=app_config.runtime.profile,
-    )
+    directory = create_plan(provider, store, prompt, duration, style, aspect_ratio, model=app_config.llm.model, temperature=app_config.llm.temperature, top_p=app_config.llm.top_p, top_k=app_config.llm.top_k, quality_profile=app_config.runtime.profile)
     typer.echo(f"Created project: {directory}")
 
 
 @app.command()
-def resume(
-    project_id: str,
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def resume(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Resume the first incomplete or invalid Director stage."""
     app_config = load_config(config)
     provider, store = _provider_and_store(config)
-    directory = resume_plan(
-        provider,
-        store,
-        project_id,
-        model=app_config.llm.model,
-        temperature=app_config.llm.temperature,
-        top_p=app_config.llm.top_p,
-        top_k=app_config.llm.top_k,
-    )
+    directory = resume_plan(provider, store, project_id, model=app_config.llm.model, temperature=app_config.llm.temperature, top_p=app_config.llm.top_p, top_k=app_config.llm.top_k)
     typer.echo(f"Resumed project: {directory}")
 
 
 @app.command("generate-scene")
-def generate_scene(
-    project_id: str,
-    scene_id: str,
-    seed: int | None = typer.Option(None, "--seed"),
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def generate_scene(project_id: str, scene_id: str, seed: int | None = typer.Option(None, "--seed"), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Generate one scene image using the configured local image provider."""
     app_config = load_config(config)
     provider, store = _image_provider_and_store(config)
     project_uuid = UUID(project_id)
     scene = _load_scene(store, project_uuid, UUID(scene_id))
-    artifact, _ = generate_scene_image(
-        provider,
-        store,
-        project_uuid,
-        scene,
-        model=app_config.image.model_path.name,
-        width=app_config.image.width,
-        height=app_config.image.height,
-        steps=app_config.image.steps,
-        guidance_scale=app_config.image.guidance_scale,
-        seed=seed,
-    )
+    artifact, _ = generate_scene_image(provider, store, project_uuid, scene, model=app_config.image.model_path.name, width=app_config.image.width, height=app_config.image.height, steps=app_config.image.steps, guidance_scale=app_config.image.guidance_scale, seed=seed)
     typer.echo(f"Generated image artifact: {artifact.id}")
 
 
 @app.command("generate-audio")
-def generate_audio(
-    project_id: str,
-    scene_id: str,
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def generate_audio(project_id: str, scene_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Generate one scene narration track using local macOS Speech."""
     app_config = load_config(config)
     provider, store = _tts_provider_and_store(config)
     project_uuid = UUID(project_id)
     scene = _load_scene(store, project_uuid, UUID(scene_id))
-    artifact, _ = generate_scene_audio(
-        provider,
-        store,
-        project_uuid,
-        scene,
-        voice=app_config.tts.voice,
-        rate=app_config.tts.rate,
-    )
+    artifact, _ = generate_scene_audio(provider, store, project_uuid, scene, voice=app_config.tts.voice, rate=app_config.tts.rate)
     typer.echo(f"Generated audio artifact: {artifact.id}")
 
 
 @app.command("generate-video")
-def generate_video(
-    project_id: str,
-    scene_id: str,
-    seed: int | None = typer.Option(None, "--seed"),
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def generate_video(project_id: str, scene_id: str, seed: int | None = typer.Option(None, "--seed"), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Generate one scene motion clip using the configured local video provider."""
     app_config = load_config(config)
-    provider, store, _ = _video_provider_and_store(config)
+    provider, store = _video_provider_and_store(config)
     project_uuid = UUID(project_id)
     scene = _load_scene(store, project_uuid, UUID(scene_id))
-    artifact, _ = generate_scene_video(
-        provider,
-        store,
-        project_uuid,
-        scene,
-        width=app_config.video.width,
-        height=app_config.video.height,
-        fps=app_config.video.fps,
-        seed=seed,
-    )
+    artifact, _ = generate_scene_video(provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
     typer.echo(f"Generated video artifact: {artifact.id}")
 
 
 @app.command("generate-media")
-def generate_media(
-    project_id: str,
-    memory_gb: float | None = typer.Option(None, "--memory-gb", min=0),
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
-    """Generate project media using deterministic strategy and safe fallback."""
+def generate_media(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
+    """Generate project media using deterministic strategy and local resources."""
     app_config = load_config(config)
-    provider, store, capability = _video_provider_and_store(config)
+    video_provider, store = _video_provider_and_store(config)
+    image_provider, _ = _image_provider_and_store(config)
+    capability = get_provider_capabilities(app_config.video.provider).video
     project_uuid = UUID(project_id)
     results = generate_project_media(
         store,
         project_uuid,
         _load_scenes(store, project_uuid),
-        video_provider=provider,
-        fallback_provider=FFmpegVideoProvider()
-        if app_config.video.provider != "ffmpeg_ken_burns"
-        else None,
+        video_provider=video_provider,
+        image_provider=image_provider,
+        image_model=app_config.image.model_path.name,
+        image_width=app_config.image.width,
+        image_height=app_config.image.height,
+        image_steps=app_config.image.steps,
+        image_guidance_scale=app_config.image.guidance_scale,
         video_capability=capability,
-        available_memory_gb=memory_gb,
+        fallback_provider=build_video_fallback(app_config),
         width=app_config.video.width,
         height=app_config.video.height,
         fps=app_config.video.fps,
@@ -301,12 +234,67 @@ def generate_media(
         typer.echo(f"Scene {result.scene.index}: {result.selected_media_type.value}{suffix}")
 
 
+@app.command("qa")
+def qa(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
+    """Run deterministic project QA and persist qa-report.json."""
+    store = FilesystemStore(load_config(config).storage.root)
+    project_uuid = UUID(project_id)
+    report = validate_project(store, project_uuid)
+    _write_project_qa(store, project_uuid, report)
+    if report.passed:
+        typer.echo("QA: PASS")
+        return
+    typer.echo("QA: FAIL")
+    for failure in report.failures:
+        typer.echo(f"[{failure.scope}] {failure.message}")
+    raise typer.Exit(code=1)
+
+
+@app.command("regenerate-scene")
+def regenerate_scene(project_id: str, scene_id: str, stage: str = typer.Option("all", "--stage", click_type=typer.Choice(["image", "audio", "video", "all"])), seed: int | None = typer.Option(None, "--seed"), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
+    """Regenerate only the selected media stage for one scene with bounded recovery, then rerun QA."""
+    app_config = load_config(config)
+    project_uuid = UUID(project_id)
+    scene_uuid = UUID(scene_id)
+    store = FilesystemStore(app_config.storage.root)
+    scene = _load_scene(store, project_uuid, scene_uuid)
+    _invalidate_scene_artifact(store, project_uuid, scene, stage)
+    if stage in {"image", "all"}:
+        image_provider, _ = _image_provider_and_store(config)
+        scene = _load_scene(store, project_uuid, scene_uuid)
+        image_result = generate_scene_image_with_recovery(image_provider, store, project_uuid, scene, model=app_config.image.model_path.name, width=app_config.image.width, height=app_config.image.height, steps=app_config.image.steps, guidance_scale=app_config.image.guidance_scale, seed=seed)
+        scene = image_result.scene.model_copy(update={"metadata": {**image_result.scene.metadata, "image_recovery": {"attempts": image_result.attempts, "strategies": list(image_result.strategies)}}})
+        store.write_json(store.project_dir(project_uuid), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
+    if stage in {"audio", "all"}:
+        tts_provider, _ = _tts_provider_and_store(config)
+        scene = _load_scene(store, project_uuid, scene_uuid)
+        generate_scene_audio(tts_provider, store, project_uuid, scene, voice=app_config.tts.voice, rate=app_config.tts.rate)
+    if stage in {"video", "all"}:
+        video_provider, _ = _video_provider_and_store(config)
+        scene = _load_scene(store, project_uuid, scene_uuid)
+        try:
+            video_result = generate_scene_video_with_recovery(video_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
+            scene = video_result.scene.model_copy(update={"metadata": {**video_result.scene.metadata, "video_recovery": {"attempts": video_result.attempts, "strategies": list(video_result.strategies), "fallback_used": False}}})
+        except VideoAgentError:
+            fallback_provider = build_video_fallback(app_config)
+            if fallback_provider is None:
+                raise
+            _, scene = generate_scene_video(fallback_provider, store, project_uuid, scene, width=app_config.video.width, height=app_config.video.height, fps=app_config.video.fps, seed=seed)
+            fallback_name = getattr(fallback_provider, "provider_name", "unknown")
+            fallback_model = getattr(fallback_provider, "model_name", getattr(fallback_provider, "_model_name", "unknown"))
+            scene = scene.model_copy(update={"metadata": {**scene.metadata, "video_recovery": {"attempts": 3, "strategies": ["original", "simplified_motion_prompt", "conservative_motion_prompt"], "fallback_used": True, "fallback_provider": fallback_name, "fallback_model": fallback_model}}})
+        store.write_json(store.project_dir(project_uuid), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
+    report = validate_project(store, project_uuid)
+    _write_project_qa(store, project_uuid, report)
+    if not report.passed:
+        for failure in report.failures:
+            typer.echo(f"[{failure.scope}] {failure.message}")
+        raise typer.Exit(code=1)
+    typer.echo(f"Regenerated scene {scene_uuid}: {stage}; QA: PASS")
+
+
 @app.command("subtitles")
-def subtitles(
-    project_id: str,
-    max_chars: int = typer.Option(48, "--max-chars", min=1),
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def subtitles(project_id: str, max_chars: int = typer.Option(48, "--max-chars", min=1), config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Generate deterministic SRT and WebVTT subtitles for a project."""
     store = FilesystemStore(load_config(config).storage.root)
     project_uuid = UUID(project_id)
@@ -318,10 +306,7 @@ def subtitles(
 
 
 @app.command("timeline")
-def timeline(
-    project_id: str,
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def timeline(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Build and persist the deterministic timeline manifest."""
     store = FilesystemStore(load_config(config).storage.root)
     project_uuid = UUID(project_id)
@@ -332,10 +317,7 @@ def timeline(
 
 
 @app.command("render")
-def render(
-    project_id: str,
-    config: Path | None = typer.Option(None, "--config", exists=True),
-) -> None:
+def render(project_id: str, config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
     """Render a project's persisted timeline into a validated MP4."""
     store = FilesystemStore(load_config(config).storage.root)
     project_uuid = UUID(project_id)
@@ -343,7 +325,6 @@ def render(
     if not timeline_path.is_file():
         raise typer.BadParameter("timeline.json not found; run 'video-agent timeline' first")
     from app.models.timeline import Timeline
-
     timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
     artifact = FFmpegRenderer().render(store, project_uuid, timeline)
     typer.echo(f"Rendered video artifact: {artifact.id}")

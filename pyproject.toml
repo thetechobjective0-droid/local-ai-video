@@ -5,9 +5,11 @@ description = "Local-first AI video generation pipeline for Apple Silicon"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "fastapi>=0.115,<1.0",
     "pydantic>=2.0,<3.0",
     "pyyaml>=6.0,<7.0",
     "typer>=0.12,<1.0",
+    "uvicorn>=0.30,<1.0",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +29,7 @@ image = [
 
 [project.scripts]
 video-agent = "app.cli:app"
+video-agent-web = "app.web:run"
 
 [tool.ruff]
 line-length = 100

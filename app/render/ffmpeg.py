@@ -9,6 +9,7 @@ from uuid import UUID
 from app.exceptions import VideoAgentError
 from app.models.artifact import Artifact
 from app.models.timeline import Timeline
+from app.recovery import RENDER_RETRY_POLICY, run_bounded
 from app.render.validator import validate_video
 from app.storage.filesystem import FilesystemStore
 
@@ -21,13 +22,39 @@ class FFmpegRenderer:
         self.ffprobe_command = ffprobe_command
 
     def render(self, store: FilesystemStore, project_id: UUID, timeline: Timeline) -> Artifact:
-        """Render static-image/video scenes with per-scene narration into final.mp4."""
+        """Render static-image/video scenes with bounded recovery."""
         directory = store.project_dir(project_id)
         if not directory.is_dir():
             raise VideoAgentError(f"project does not exist: {project_id}")
         if not timeline.scenes:
             raise VideoAgentError("cannot render an empty timeline")
         _require_contiguous_timeline(timeline)
+
+        attempts: list[str] = []
+        output = directory / timeline.output_video.name
+
+        def operation(attempt: int) -> Artifact:
+            if attempt == 0:
+                attempts.append("original_render")
+            else:
+                attempts.append("clean_partial_output_retry")
+                _remove_partial_outputs(directory, output)
+            return self._render_once(store, project_id, timeline, attempts)
+
+        try:
+            result = run_bounded(operation, RENDER_RETRY_POLICY)
+        except Exception as exc:
+            raise VideoAgentError(f"FFmpeg render failed after bounded recovery: {exc}") from exc
+        return result.value
+
+    def _render_once(
+        self,
+        store: FilesystemStore,
+        project_id: UUID,
+        timeline: Timeline,
+        recovery_strategies: list[str],
+    ) -> Artifact:
+        directory = store.project_dir(project_id)
         assets = _load_artifacts(directory)
         output = directory / timeline.output_video.name
         command, filter_complex = self._build_command(directory, timeline, assets, output)
@@ -74,7 +101,12 @@ class FFmpegRenderer:
         store.write_json(
             directory,
             "render.json",
-            {"command": command, "filter_complex": filter_complex, "artifact_id": str(artifact.id)},
+            {
+                "command": command,
+                "filter_complex": filter_complex,
+                "artifact_id": str(artifact.id),
+                "recovery": {"attempts": len(recovery_strategies), "strategies": recovery_strategies},
+            },
         )
         return artifact
 
@@ -198,6 +230,12 @@ def _resolve_artifact_path(directory: Path, artifact: Artifact) -> Path:
     if not path.is_file():
         raise VideoAgentError(f"artifact file does not exist: {path}")
     return path
+
+
+def _remove_partial_outputs(directory: Path, output: Path) -> None:
+    """Remove only renderer-owned files before a bounded retry."""
+    for path in (output, directory / "final-video.json", directory / "render.json"):
+        path.unlink(missing_ok=True)
 
 
 def _require_contiguous_timeline(timeline: Timeline) -> None:

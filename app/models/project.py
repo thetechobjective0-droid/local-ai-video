@@ -12,6 +12,8 @@ class ProjectStatus(StrEnum):
     BRIEF_READY = "brief_ready"
     SCRIPT_READY = "script_ready"
     STORYBOARD_READY = "storyboard_ready"
+    ASSETS_GENERATING = "assets_generating"
+    ASSETS_READY = "assets_ready"
     FAILED = "failed"
 
 
