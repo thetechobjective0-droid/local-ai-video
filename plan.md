@@ -104,6 +104,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - plan synchronized with Phase 12 implementation
 - `run.sh` launcher uses the existing local checkout, syncs dependencies, validates local prerequisites, checks Ollama, and starts the web dashboard
 - corrected Director script-stage logging to use the actual `Script.estimated_duration_seconds` schema field
+- planning-job API reconciles stale failed job state when the durable project is already `storyboard_ready`, preventing a successfully completed Resume from being displayed as failed planning
 
 ### Design constraints
 
