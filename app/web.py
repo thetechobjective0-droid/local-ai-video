@@ -1,6 +1,7 @@
 """Local-only HTTP API for the video generation application."""
 
 import json
+from pathlib import Path
 from uuid import UUID
 
 import uvicorn
@@ -67,7 +68,7 @@ def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> No
     store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
 
 
-def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[object, str]:
+def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[Path, str]:
     scene = _scene(store, project_id, scene_id)
     manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
     if not manifest.is_file():
@@ -75,19 +76,19 @@ def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suf
     try:
         data = json.loads(manifest.read_text(encoding="utf-8"))
         artifact_id = UUID(str(data["id"]))
-        path_value = data["path"]
+        path_value = Path(str(data["path"]))
     except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
         raise HTTPException(status_code=422, detail="artifact manifest is invalid") from None
-    path = (store.project_dir(project_id) / path_value).resolve() if not str(path_value).startswith("/") else __import__("pathlib").Path(path_value).resolve()
     project_dir = store.project_dir(project_id).resolve()
+    path = (path_value if path_value.is_absolute() else project_dir / path_value).resolve()
     if project_dir not in path.parents or not path.is_file():
         raise HTTPException(status_code=404, detail="artifact file not found")
     return path, str(artifact_id)
 
 
-@app.get("/")
-def index() -> HTMLResponse:
-    return HTMLResponse(HTML)
+@app.get("/", response_class=HTMLResponse)
+def index() -> str:
+    return HTML
 
 
 @app.get("/api/health")
