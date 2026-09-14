@@ -10,7 +10,7 @@ The detailed phased plan below is the source of truth and must stay synchronized
 
 # 20. Phase 11 — Local Web API + UI
 
-**Status: IN PROGRESS — ARTIFACT PREVIEWS**
+**Status: IN PROGRESS — DASHBOARD MEDIA + TIMELINE**
 
 ### Delivered
 
@@ -31,10 +31,12 @@ The detailed phased plan below is the source of truth and must stay synchronized
 - scene artifact metadata endpoint with persisted manifest details and safe project-relative file serving
 - persisted project timeline JSON endpoint
 - persisted SRT/WebVTT subtitle file endpoints
+- browser storyboard image, audio and scene-video previews bound to persisted artifact endpoints
+- dashboard timeline and narration visibility
+- dashboard SRT and WebVTT navigation when subtitle artifacts exist
 
 ### Remaining
 
-- bind the new artifact endpoints into the browser storyboard UI
 - improve long-running generation status visibility
 - add API/UI documentation and launch instructions
 - add Phase 11 acceptance/status documentation
