@@ -29,7 +29,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED |
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling, loading UX, stale refresh, progress, and final-video readiness hardened |
-| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; checkpoints, resume, and cancellation semantics added |
+| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; checkpoints, resume, and cooperative cancellation/graceful shutdown added |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 acceptance remains an execution requirement |
 | 14 | Semantic/visual evaluation | IMPLEMENTED deterministic baseline plus bounded refinement proposals; true model-based visual evaluation remains optional research work |
 | 15 | Advanced recovery/refinement | IMPLEMENTED |
@@ -40,12 +40,12 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 20 | Persistence/schema migrations | IMPLEMENTED; schema 1.1 migration path present |
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; target-machine profiling remains hardware-specific |
 | 22 | V1 production gate | IMPLEMENTED |
-| 23 | V2 advanced production features | IMPLEMENTED; reproducibility, integrity/archive, dependency checkpoints, resumable/cancellable jobs, selective regeneration, memory-aware scheduling, structured event history, scene/timeline editing, approval checkpoints, operator APIs, bounded evaluation/refinement, and local dashboard integration surfaces completed |
+| 23 | V2 advanced production features | IMPLEMENTED; reproducibility, integrity/archive, dependency checkpoints, resumable/cancellable jobs, selective regeneration, memory-aware scheduling, structured event history, scene/timeline editing, per-scene narration/voice controls, transition/subtitle metadata, approval checkpoints, operator APIs, bounded evaluation/refinement, and local dashboard integration surfaces completed |
 | 24 | V3 platform evolution/research | IMPLEMENTED platform foundation; versioned provider discovery, compatibility checks, local benchmark history, reproducible experiment manifests/results, and loopback APIs completed |
 
 ## Current implementation state
 
-The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene/timeline/narration/voice/transition metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
+The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
 
 The only remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
 
@@ -62,7 +62,9 @@ Implemented:
 - Selective scene regeneration with downstream invalidation.
 - Resource-aware unified-memory scheduling and cancellation-aware admission.
 - Append-only versioned JSONL event history and operator resource/event endpoints.
-- Scene editing, reorder, narration/voice metadata, transition/subtitle metadata, and deterministic timeline invalidation.
+- Scene editing and reorder, with duration/timing validation.
+- Per-scene narration and voice metadata with voice override consumed by TTS.
+- Transition and subtitle metadata with transition consumed by timeline resolution.
 - Human approval checkpoint records and API controls.
 - Deterministic evaluation plus bounded, non-autonomous refinement proposals.
 - Existing dashboard controls for scene inspection, regeneration, resume, QA, progress, and final-video readiness.
