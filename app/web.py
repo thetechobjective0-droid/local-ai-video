@@ -19,6 +19,7 @@ from app.generation.audio import generate_scene_audio
 from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.logging import configure_logging
+from app.models.artifact import Artifact
 from app.models.scene import Scene
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_provider
@@ -78,24 +79,34 @@ def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> No
     )
 
 
-def _artifact_path(
+def _artifact_manifest(
     store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
-) -> tuple[Path, str]:
+) -> tuple[Artifact, Path]:
     scene = _scene(store, project_id, scene_id)
     manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
     if not manifest.is_file():
         raise HTTPException(status_code=404, detail=f"scene {suffix} artifact not found")
     try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-        artifact_id = UUID(str(data["id"]))
-        path_value = Path(str(data["path"]))
-    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+        artifact = Artifact.model_validate_json(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         raise HTTPException(status_code=422, detail="artifact manifest is invalid") from None
-    project_dir = store.project_dir(project_id).resolve()
-    path = (path_value if path_value.is_absolute() else project_dir / path_value).resolve()
-    if project_dir not in path.parents or not path.is_file():
-        raise HTTPException(status_code=404, detail="artifact file not found")
-    return path, str(artifact_id)
+    if artifact.project_id != project_id:
+        raise HTTPException(status_code=422, detail="artifact manifest belongs to another project")
+    expected_type = {"image": "scene_image", "audio": "scene_audio", "video": "scene_video"}[suffix]
+    if artifact.type != expected_type:
+        raise HTTPException(status_code=422, detail="artifact manifest has an invalid type")
+    try:
+        path = store.project_path(project_id, artifact.path, must_exist=True)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="artifact file not found") from None
+    return artifact, path
+
+
+def _artifact_path(
+    store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
+) -> tuple[Path, str]:
+    artifact, path = _artifact_manifest(store, project_id, scene_id, suffix)
+    return path, str(artifact.id)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -217,21 +228,20 @@ def timeline(project_id: UUID) -> dict[str, Any]:
 def subtitles(project_id: UUID, format: str) -> FileResponse:
     if format not in {"srt", "vtt"}:
         raise HTTPException(status_code=404, detail="unsupported subtitle format")
-    path = _store().project_dir(project_id) / f"subtitles.{format}"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="subtitle file not found")
+    path = store_path = _store().project_path(project_id, Path(f"subtitles.{format}"), must_exist=True)
     logger.info("[web] subtitle available project=%s format=%s", project_id, format)
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
-    return FileResponse(path, media_type=media_type, filename=path.name)
+    return FileResponse(path, media_type=media_type, filename=store_path.name)
 
 
 @app.head("/api/projects/{project_id}/subtitles/{format}")
 def subtitles_head(project_id: UUID, format: str) -> Response:
     if format not in {"srt", "vtt"}:
         raise HTTPException(status_code=404, detail="unsupported subtitle format")
-    path = _store().project_dir(project_id) / f"subtitles.{format}"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="subtitle file not found")
+    try:
+        path = _store().project_path(project_id, Path(f"subtitles.{format}"), must_exist=True)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="subtitle file not found") from None
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
     return Response(
         status_code=200,
@@ -263,15 +273,14 @@ def scene_artifacts(project_id: UUID, scene_id: UUID) -> dict[str, Any]:
     scene = _scene(store, project_id, scene_id)
     artifacts: dict[str, Any] = {}
     for suffix in ("image", "audio", "video"):
-        manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
-        if not manifest.is_file():
-            continue
         try:
-            artifact = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
+            artifact, _ = _artifact_manifest(store, project_id, scene_id, suffix)
+        except HTTPException as exc:
+            if exc.status_code == 404:
+                continue
+            raise
         artifacts[suffix] = {
-            **artifact,
+            **artifact.model_dump(mode="json"),
             "url": f"/api/projects/{project_id}/scenes/{scene_id}/{suffix}",
         }
     logger.info(
@@ -401,7 +410,7 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
 @app.get("/api/projects/{project_id}/video/status")
 def final_video_status(project_id: UUID) -> dict[str, Any]:
     """Return final-video readiness without using a noisy missing-file HEAD probe."""
-    path = _store().project_dir(project_id) / "final.mp4"
+    path = _store().project_path(project_id, Path("final.mp4"))
     if not path.is_file():
         return {"ready": False, "url": f"/api/projects/{project_id}/video"}
     return {
@@ -413,9 +422,10 @@ def final_video_status(project_id: UUID) -> dict[str, Any]:
 
 @app.head("/api/projects/{project_id}/video")
 def final_video_head(project_id: UUID) -> Response:
-    path = _store().project_dir(project_id) / "final.mp4"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="final video not found")
+    try:
+        path = _store().project_path(project_id, Path("final.mp4"), must_exist=True)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="final video not found") from None
     return Response(
         status_code=200,
         headers={"content-type": "video/mp4", "content-length": str(path.stat().st_size)},
@@ -424,9 +434,10 @@ def final_video_head(project_id: UUID) -> Response:
 
 @app.get("/api/projects/{project_id}/video")
 def final_video(project_id: UUID) -> FileResponse:
-    path = _store().project_dir(project_id) / "final.mp4"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="final video not found")
+    try:
+        path = _store().project_path(project_id, Path("final.mp4"), must_exist=True)
+    except (FileNotFoundError, ValueError):
+        raise HTTPException(status_code=404, detail="final video not found") from None
     return FileResponse(path, media_type="video/mp4", filename="final.mp4")
 
 
