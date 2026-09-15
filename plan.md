@@ -24,7 +24,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 4 | Local macOS TTS | IMPLEMENTED; non-silent output validation integrated |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
 | 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment and macOS media-process environment hardened |
-| 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE; inference memory controls added |
+| 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE; LTX quality controls and temporal-stability prompt handling added |
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; conservative resource scheduling now operational |
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED |
@@ -45,7 +45,9 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, benchmark comparison/regression reporting, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
+The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, benchmark comparison/regression reporting, and loopback APIs for platform operations.
+
+The video-generation quality path has now been upgraded. LTX I2V uses the dedicated `LTXImageToVideoPipeline`, explicit negative prompts, full shot-context prompt construction, configurable denoising/guidance, image-conditioning noise, timestep-aware decode controls, and a versioned generation cache key so old low-quality cached outputs are not silently reused. `config.example.yaml` now demonstrates a quality-oriented local LTX configuration, while `docs/video-quality.md` documents the quality ladder and M4 trade-offs. The deterministic FFmpeg provider remains available as a reliability fallback but is explicitly documented as still-image animation rather than AI video synthesis.
 
 The only remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
 
@@ -68,6 +70,7 @@ Implemented:
 - Human approval checkpoint records and API controls.
 - Deterministic evaluation plus bounded, non-autonomous refinement proposals.
 - Existing dashboard controls for scene inspection, regeneration, resume, QA, progress, and final-video readiness.
+- Quality-oriented LTX I2V configuration and temporal-stability prompt/conditioning controls.
 
 ## Phase 24 — V3 Platform Evolution / Research
 
@@ -77,6 +80,7 @@ Implemented platform foundation:
 - `app/platform/experiments.py`: provider/version/parameter/seed experiment manifests and result records.
 - `app/platform_api.py`: provider discovery, compatibility, benchmark history/comparison, and experiment HTTP APIs.
 - `docs/platform-v3.md`: V3 architecture and operational contract.
+- `docs/video-quality.md`: local AI-video quality configuration and tuning guide.
 - `tests/unit/test_v3_platform.py`: provider, experiment, and benchmark-comparison coverage.
 
 The platform intentionally does not make network access mandatory. Model-specific multimodal evaluation, quantization research, thermal policies, and new providers can now be added behind these stable extension contracts without modifying the core orchestration path.
