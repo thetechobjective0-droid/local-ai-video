@@ -28,7 +28,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
-| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling, loading UX, stale-refresh, video readiness, and determinate progress UI hardened |
+| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling lifecycle race fixed, loading UX, stale-refresh, video readiness, and determinate progress UI hardened |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
 | 14 | Semantic/visual evaluation | IN PROGRESS; deterministic alignment, continuity, narration, and storyboard consistency baselines added |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. The `video-agent` entry point now exposes `migrate` and `production-gate` operational commands in addition to the existing generation, QA, rendering, and acceptance commands.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. The `video-agent` entry point exposes `migrate` and `production-gate` operational commands in addition to the existing generation, QA, rendering, and acceptance commands.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
