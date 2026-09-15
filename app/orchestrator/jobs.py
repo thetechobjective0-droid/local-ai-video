@@ -15,12 +15,17 @@ import tempfile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import AppConfig, load_config
+from app.generation.subtitles import build_subtitles
+from app.generation.timeline import build_timeline
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.image import ImageProvider
+from app.qa.project import validate_project
+from app.qa.report import write_qa_report
+from app.render.ffmpeg import FFmpegRenderer
 from app.storage.filesystem import FilesystemStore
 
 logger = logging.getLogger(__name__)
@@ -52,6 +57,33 @@ def _build_image_provider_if_needed(config: AppConfig, scenes: List[Scene]) -> I
         config.image.model_path,
     )
     return DiffusersImageProvider(config.image.model_path, device=config.image.device)
+
+
+def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
+    """Build timeline/subtitles, render final.mp4, and persist deterministic QA."""
+    project = store.load_project(project_id)
+    scenes: list[Scene] = []
+    for path in sorted(store.project_dir(project_id).glob("scene-*.json")):
+        if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
+            continue
+        try:
+            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    if not scenes:
+        raise ValueError(f"no scenes found while finalizing project: {project_id}")
+    build_timeline(store, project, scenes)
+    build_subtitles(store, project_id, scenes)
+    from app.models.timeline import Timeline
+
+    timeline_path = store.project_dir(project_id) / "timeline.json"
+    timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
+    FFmpegRenderer().render(store, project_id, timeline)
+    report = validate_project(store, project_id)
+    write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
+    if not report.passed:
+        failures = "; ".join(failure.message for failure in report.failures)
+        raise ValueError(f"final project QA failed: {failures}")
 
 
 class MediaJobManager:
@@ -226,6 +258,8 @@ class MediaJobManager:
                 fps=config.video.fps,
                 progress_callback=progress,
             )
+            logger.info("[media] finalization START job=%s", job_id)
+            _finalize_project_media(self.store, job.project_id)
             self._update(
                 job_id,
                 state="completed",
