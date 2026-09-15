@@ -40,40 +40,26 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
 | 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
-| 23 | V2 advanced production features | FUTURE |
-| 24 | V3 platform evolution/research | FUTURE |
+| 23 | V2 advanced production features | IN PROGRESS; implementation scope and acceptance criteria defined; reproducibility manifest foundation added |
+| 24 | V3 platform evolution/research | PLANNED; implementation scope and acceptance criteria defined |
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 14 now has a deterministic semantic/continuity baseline; its remaining model-based visual quality work is explicitly target-model acceptance rather than a CI requirement. Phases 15–22 have production-oriented implementation primitives. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, idempotent schema migration, operational CLI commands, and a V1 production gate. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. Phase-specific implementation documents now cover Phases 14, 18, and 21.
+Phases 0–22 have implementation coverage. Phase 23 is now in progress with its implementation contract documented and reproducibility metadata primitives added. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
 Ruff 0.16.7 formatting is normalized across the previously failing application files; CI remains the authoritative execution path for lint, type checking, and tests. CI does not auto-commit formatting changes.
 
-## Phase 14 — Semantic / visual evaluation
+## Phase 23 — V2 Advanced Production Features
 
-`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding. Model-based image/scene semantic evaluation, I2V motion quality, stronger visual continuity, and final-video perceptual evaluation remain target-model acceptance work and must not be represented as passed by CI.
+The detailed implementation contract is in `docs/phase-23-24.md`. The first foundation is `app/generation/reproducibility.py`, which captures immutable project/provider/model/parameter inputs and a deterministic fingerprint for future generation manifests, export/import, checkpointing, and benchmark comparison.
 
-## Phase 17 — Security/locality hardening
+Next V2 implementation increments should build on this foundation: artifact integrity manifests, project export/import, dependency-aware resumable orchestration, scene-level regeneration, resource-aware scheduling, structured event history, advanced evaluation/refinement, and corresponding dashboard controls.
 
-Security hardening is complete. `FilesystemStore.resolve_path()` and `project_path()` provide the containment boundary; media endpoints validate typed manifests, ownership and artifact types; loopback serving and Ollama endpoint validation enforce locality; subprocess invocation remains argv-based without shell execution; and security regression tests cover traversal, symlink, endpoint and manifest boundaries.
+## Phase 24 — V3 Platform Evolution / Research
 
-## Phase 19 — Observability / operational diagnostics
-
-`app/observability.py` provides bounded in-process counters, bounded duration observations, timer context management, and serializable summaries. Counter names and duration series are capped to prevent accidental unbounded-memory growth. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
-
-## Phase 20 — Persistence / schema migrations
-
-`app/storage/migrations.py` provides an idempotent filesystem migration entry point. Legacy `project.json` manifests are upgraded to schema `1.1` atomically while generated media remains untouched. Re-running the migration is a no-op. The `video-agent migrate` command makes the operation explicit and repeatable.
-
-## Phase 21 — M4 resource/performance optimization
-
-The ML providers reduce inference memory pressure through capability-gated attention/VAE slicing and tiling, `torch.inference_mode()`, explicit temporary reference release, and accelerator/Python cache cleanup. Acceptance records peak process RSS, CPU seconds, stage wall-clock timings, and before/after resource snapshots. CPU/GPU utilization, sustained thermal behavior, and model-specific latency still require target-machine runs.
-
-## Phase 22 — V1 production gate
-
-`app/production_gate.py` evaluates a persisted project against the local-only policy, schema version, storage security audit, deterministic media QA, and semantic baseline. It produces a machine-readable gate report and does not claim target-hardware acceptance. The `video-agent production-gate PROJECT_ID` command exposes the check operationally; the real M4 acceptance command remains the hardware gate.
+The detailed implementation contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after the Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
 
 ## Definition of done
 
