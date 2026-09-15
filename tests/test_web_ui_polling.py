@@ -4,7 +4,7 @@ from app.web_ui import HTML
 
 
 def _function_body(name: str) -> str:
-    match = re.search(rf"async function {name}\([^)]*\)\{{(.*?)\}}\nasync function", HTML)
+    match = re.search(rf"async function {name}\([^)]*\)\{{(.*?)(?:\}}\n(?:async function|loadProjects\(\);))", HTML)
     assert match is not None, f"missing {name} function"
     return match.group(1)
 
