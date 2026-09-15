@@ -31,27 +31,27 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling, loading UX, stale-refresh, and video readiness hardened |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
-| 14 | Semantic/visual evaluation | IN PROGRESS; deterministic semantic baseline added |
+| 14 | Semantic/visual evaluation | IN PROGRESS; deterministic alignment, continuity, narration, and storyboard consistency baselines added |
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
 | 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job/UI-polling/structured-output tests added; CLI mypy compatibility, read-only CI workflow, schema-aware Director fixtures, video-QA-isolated media tests, Ruff-formatted polling fixtures, and media-job formatter normalization hardened |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
-| 21 | M4 resource/performance optimization | IN PROGRESS; memory-efficient ML inference controls added, CPU/performance measurement next |
+| 21 | M4 resource/performance optimization | IN PROGRESS; memory-efficient ML inference controls and acceptance resource measurements added |
 | 22 | V1 production gate | PLANNED |
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. The image extra now explicitly installs Accelerate so Diffusers can use its lower-memory loading path on the target machine. Diffusers image and LTX inference now use `torch.inference_mode()`, capability-gated attention/ VAE slicing and VAE tiling, and explicit post-generation cache/reference cleanup to reduce peak and retained accelerator memory. FFmpeg and FFprobe subprocesses now receive a sanitized macOS environment without malloc stack-logging variables, removing the repeated `MallocStackLogging` diagnostics seen during finalization. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant. The media-job orchestration module is normalized to the formatter version resolved by CI.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. The image extra now explicitly installs Accelerate so Diffusers can use its lower-memory loading path on the target machine. Diffusers image and LTX inference now use `torch.inference_mode()`, capability-gated attention/VAE slicing and VAE tiling, and explicit post-generation cache/reference cleanup to reduce peak and retained accelerator memory. FFmpeg and FFprobe subprocesses now receive a sanitized macOS environment without malloc stack-logging variables, removing the repeated `MallocStackLogging` diagnostics seen during finalization. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant. The media-job orchestration module is normalized to the formatter version resolved by CI. Deterministic evaluation now also scores narration-to-visual lexical alignment and image-prompt-to-motion-prompt storyboard consistency, while remaining explicitly non-visual. Target-machine acceptance now records peak process RSS and process CPU seconds alongside wall-clock stage timings and before/after memory/disk snapshots.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
 ## Phase 13 — Target-machine acceptance harness
 
-`app/acceptance.py` provides local-only/platform/tool/model readiness checks, MPS readiness, model-load timing, real scene image/video generation timing, before/after resource snapshots, deterministic project QA, final FFmpeg render/final QA, and a machine-readable JSON report.
+`app/acceptance.py` provides local-only/platform/tool/model readiness checks, MPS readiness, model-load timing, real scene image/video generation timing, before/after resource snapshots, deterministic project QA, final FFmpeg render/final QA, and a machine-readable JSON report. It now additionally records peak process RSS and process CPU seconds for evidence-driven performance analysis.
 
 ```bash
 uv run video-agent acceptance --no-media
@@ -63,9 +63,9 @@ uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance
 
 ## Phase 14 — Semantic / visual evaluation
 
-`app/evaluation.py` adds a deterministic baseline for project-prompt lexical alignment and adjacent-scene lexical continuity. It requires hard deterministic QA to pass and writes `evaluation-report.json` separately from integrity QA. The baseline is not represented as visual understanding.
+`app/evaluation.py` adds a deterministic baseline for project-prompt lexical alignment, adjacent-scene lexical continuity, visual-description-to-narration lexical alignment, and image-prompt-to-motion-prompt storyboard consistency. It requires hard deterministic QA to pass and writes `evaluation-report.json` separately from integrity QA. These metrics are lexical heuristics only and are not represented as visual understanding.
 
-Remaining work is local image/scene semantic evaluation, I2V motion quality, narration/script alignment, stronger storyboard-to-media consistency, visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
+Remaining work is local image/scene semantic evaluation, I2V motion quality, stronger visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
 
 ## Phase 17 — Security/locality hardening
 
@@ -79,7 +79,7 @@ Tests cover deterministic application boundaries plus acceptance readiness/repor
 
 ## Phase 21 — M4 resource/performance optimization
 
-The ML providers now reduce inference memory pressure without changing model weights: attention slicing, VAE slicing, and VAE tiling are enabled only when supported by the loaded Diffusers pipeline; inference runs under `torch.inference_mode()`; temporary outputs are explicitly released; and Python/accelerator caches are collected after each generation. This is designed for the M4 / 36 GB unified-memory target while retaining the existing conservative single-media-job concurrency. The next optimization step is measured CPU/GPU utilization, peak resident memory, generation latency, and thermal behavior on the real M4 so performance changes are evidence-driven rather than speculative.
+The ML providers now reduce inference memory pressure without changing model weights: attention slicing, VAE slicing, and VAE tiling are enabled only when supported by the loaded Diffusers pipeline; inference runs under `torch.inference_mode()`; temporary outputs are explicitly released; and Python/accelerator caches are collected after each generation. This is designed for the M4 / 36 GB unified-memory target while retaining the existing conservative single-media-job concurrency. Acceptance now measures peak process RSS and process CPU seconds in addition to stage wall-clock timings and before/after resource snapshots. These measurements provide a baseline for real-M4 optimization; CPU/GPU utilization, sustained thermal behavior, and model-specific latency still require target-machine runs and must not be inferred from CI.
 
 ## Phases 15–16, 19–20, 22–24
 
