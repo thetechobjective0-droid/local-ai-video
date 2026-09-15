@@ -49,6 +49,8 @@ Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. P
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
+The latest CI formatting regression is being normalized against Ruff 0.16.7 before the next full CI validation; no formatter auto-commit is used in CI.
+
 ## Phase 14 — Semantic / visual evaluation
 
 `app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding.
