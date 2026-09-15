@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.preflight import memory_gib, snapshot
+from app.preflight import _memory_bytes, memory_gib, snapshot
 
 
 def test_snapshot_reports_positive_resources(tmp_path: Path) -> None:
@@ -12,3 +12,9 @@ def test_snapshot_reports_positive_resources(tmp_path: Path) -> None:
 
 def test_memory_gib_conversion() -> None:
     assert memory_gib(1024**3) == 1.0
+
+
+def test_memory_bytes_reports_valid_range() -> None:
+    total, available = _memory_bytes()
+    assert total > 0
+    assert 0 <= available <= total
