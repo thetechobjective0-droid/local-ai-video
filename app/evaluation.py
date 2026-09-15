@@ -25,7 +25,7 @@ class EvaluationReport:
     passed: bool
     scores: tuple[EvaluationScore, ...]
     hard_qa_passed: bool
-    report_version: str = "1.0"
+    report_version: str = "1.1"
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -39,7 +39,7 @@ class EvaluationReport:
 def evaluate_project(
     store: FilesystemStore, project_id: UUID, *, minimum_score: float = 0.15
 ) -> EvaluationReport:
-    """Score textual semantic consistency without pretending to perform visual QA."""
+    """Score deterministic textual consistency without pretending to perform visual QA."""
     qa = validate_project(store, project_id)
     if not qa.passed:
         return EvaluationReport(passed=False, scores=(), hard_qa_passed=False)
@@ -47,19 +47,9 @@ def evaluate_project(
     scenes = _load_scenes(store, project_id)
     project_tokens = _tokens(project.source_prompt)
     scores: list[EvaluationScore] = []
-    scene_scores: list[float] = []
-    for scene in scenes:
-        scene_text = " ".join(
-            value
-            for value in (
-                scene.visual_description,
-                scene.image_prompt,
-                scene.motion_prompt,
-                scene.narration,
-            )
-            if value
-        )
-        scene_scores.append(_jaccard(project_tokens, _tokens(scene_text)))
+
+    scene_texts = [_scene_text(scene) for scene in scenes]
+    scene_scores = [_jaccard(project_tokens, _tokens(text)) for text in scene_texts]
     average = sum(scene_scores) / len(scene_scores) if scene_scores else 0.0
     scores.append(
         EvaluationScore(
@@ -85,6 +75,44 @@ def evaluate_project(
         )
     )
 
+    narration_values: list[float] = []
+    for scene in scenes:
+        visual_tokens = _tokens(scene.visual_description or scene.image_prompt)
+        narration_tokens = _tokens(scene.narration)
+        if not narration_tokens:
+            narration_values.append(1.0)
+        else:
+            narration_values.append(_jaccard(visual_tokens, narration_tokens))
+    narration_alignment = (
+        sum(narration_values) / len(narration_values) if narration_values else 1.0
+    )
+    scores.append(
+        EvaluationScore(
+            "narration_alignment",
+            narration_alignment,
+            f"mean visual-to-narration lexical overlap across {len(scenes)} scenes",
+        )
+    )
+
+    storyboard_values: list[float] = []
+    for scene in scenes:
+        image_tokens = _tokens(scene.image_prompt)
+        motion_tokens = _tokens(scene.motion_prompt)
+        if not image_tokens or not motion_tokens:
+            storyboard_values.append(1.0)
+        else:
+            storyboard_values.append(_jaccard(image_tokens, motion_tokens))
+    storyboard_consistency = (
+        sum(storyboard_values) / len(storyboard_values) if storyboard_values else 1.0
+    )
+    scores.append(
+        EvaluationScore(
+            "storyboard_consistency",
+            storyboard_consistency,
+            f"mean image-to-motion lexical overlap across {len(scenes)} scenes",
+        )
+    )
+
     passed = all(score.score >= minimum_score for score in scores)
     return EvaluationReport(passed=passed, scores=tuple(scores), hard_qa_passed=True)
 
@@ -107,6 +135,19 @@ def _load_scenes(store: FilesystemStore, project_id: UUID) -> list[Scene]:
         except (OSError, ValueError, json.JSONDecodeError):
             continue
     return sorted(scenes, key=lambda scene: scene.index)
+
+
+def _scene_text(scene: Scene) -> str:
+    return " ".join(
+        value
+        for value in (
+            scene.visual_description,
+            scene.image_prompt,
+            scene.motion_prompt,
+            scene.narration,
+        )
+        if value
+    )
 
 
 def _tokens(text: str) -> set[str]:
