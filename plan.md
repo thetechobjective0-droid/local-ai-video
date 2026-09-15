@@ -20,10 +20,10 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED; macOS memory probing hardened |
 | 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
 | 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED; schema-constrained generation hardened |
-| 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
+| 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE; Accelerate is now an explicit image extra dependency |
 | 4 | Local macOS TTS | IMPLEMENTED; integrated into media jobs with non-silent output validation |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
-| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment hardened |
+| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment hardened; macOS malloc diagnostic environment is sanitized for media subprocesses |
 | 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE |
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
 | 9 | Deterministic project/media QA | COMPLETE |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant. The media-job orchestration module is now normalized to the formatter version resolved by CI so `ruff format --check` is deterministic for the current dependency range.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. The image extra now explicitly installs Accelerate so Diffusers can use its lower-memory loading path on the target machine. FFmpeg and FFprobe subprocesses now receive a sanitized macOS environment without malloc stack-logging variables, removing the repeated `MallocStackLogging` diagnostics seen during finalization. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant. The media-job orchestration module is normalized to the formatter version resolved by CI.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -69,7 +69,7 @@ Remaining work is local image/scene semantic evaluation, I2V motion quality, nar
 
 ## Phase 17 — Security/locality hardening
 
-Renderer artifact resolution rejects paths outside the project directory. Planning-job paths use storage-root containment, stale `queued`/`running` jobs become `interrupted` after restart, and HTTP prompt/style/duration inputs are bounded.
+Renderer artifact resolution rejects paths outside the project directory. Planning-job paths use storage-root containment, stale `queued`/`running` jobs become `interrupted` after restart, HTTP prompt/style/duration inputs are bounded, and media subprocesses strip macOS malloc diagnostic variables before launching external tools.
 
 Remaining work includes filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and threat-model documentation.
 
