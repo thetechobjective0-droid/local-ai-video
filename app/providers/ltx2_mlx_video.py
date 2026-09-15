@@ -13,23 +13,27 @@ from app.providers.video import VideoGenerationRequest, VideoResult
 
 
 class LTX2MLXVideoProvider:
-    """Run the local LTX-2.3 MLX runtime through its offline CLI."""
+    """Run a local LTX-2.3 MLX runtime through its offline CLI."""
 
     provider_name = "ltx2_mlx"
-    model_name = "LTX-2.3-22B-MLX"
+    model_name = "LTX-2.3-MLX"
 
     def __init__(
         self,
         engine_path: Path,
+        model_path: Path,
         *,
         uv_command: str = "uv",
-        bits: int = 8,
+        low_ram: bool = True,
+        pipeline: str = "two-stage",
         native_audio: bool = True,
         i2v_strength: float = 0.95,
     ) -> None:
         self.engine_path = engine_path.expanduser().resolve()
+        self.model_path = model_path.expanduser().resolve()
         self.uv_command = uv_command
-        self.bits = bits
+        self.low_ram = low_ram
+        self.pipeline = pipeline
         self.native_audio = native_audio
         self.i2v_strength = i2v_strength
 
@@ -44,13 +48,12 @@ class LTX2MLXVideoProvider:
             raise ProviderUnavailableError(
                 f"LTX-2 MLX runtime directory does not exist: {self.engine_path}"
             )
-        generate_script = self.engine_path / "generate.py"
-        if not generate_script.is_file():
+        if not self.model_path.exists():
             raise ProviderUnavailableError(
-                f"LTX-2 MLX runtime is missing generate.py: {generate_script}"
+                f"LTX-2 MLX local model pack does not exist: {self.model_path}"
             )
-        if self.bits not in {4, 8}:
-            raise ValueError("LTX-2 MLX quantization bits must be 4 or 8")
+        if self.pipeline not in {"two-stage", "two-stages-hq", "one-stage", "distilled"}:
+            raise ValueError("unsupported LTX-2 MLX pipeline")
         if not 0 <= self.i2v_strength <= 1:
             raise ValueError("LTX-2 MLX image conditioning strength must be between 0 and 1")
 
@@ -69,37 +72,39 @@ class LTX2MLXVideoProvider:
         temp_root = Path(
             tempfile.mkdtemp(prefix=".ltx2-", dir=str(request.output_path.parent))
         )
+        generated_output = temp_root / "scene.mp4"
         try:
             prompt = request.prompt.strip() or "Natural cinematic motion with coherent temporal movement."
             command = [
                 self.uv_command,
                 "run",
                 "--offline",
-                "python",
-                "generate.py",
+                "ltx-2-mlx",
+                "generate",
+                "--prompt",
+                prompt,
                 "--image",
                 str(request.image_path),
+                "--model",
+                str(self.model_path),
                 "--frames",
                 str(frames),
                 "--height",
                 str(int(str(request.metadata.get("height", 512)))),
                 "--width",
                 str(int(str(request.metadata.get("width", 768)))),
-                "--bits",
-                str(self.bits),
-                "--fps",
-                str(request.fps),
-                "--strength",
-                str(self.i2v_strength),
                 "--seed",
-                str(request.seed if request.seed is not None else 0),
+                str(request.seed if request.seed is not None else -1),
                 "--output",
-                str(temp_root),
+                str(generated_output),
+                f"--{self.pipeline}",
             ]
-            if self.native_audio:
-                command.append(prompt)
-            else:
-                command.extend(["--no-audio", prompt])
+            if self.low_ram:
+                command.append("--low-ram")
+            if not self.native_audio:
+                command.append("--no-audio")
+            if self.i2v_strength != 0.95:
+                command.extend(["--conditioning-strength", str(self.i2v_strength)])
             try:
                 completed = subprocess.run(
                     command,
@@ -113,24 +118,20 @@ class LTX2MLXVideoProvider:
             except subprocess.TimeoutExpired as exc:
                 raise ProviderUnavailableError("LTX-2 MLX generation timed out") from exc
             except OSError as exc:
-                raise ProviderUnavailableError("uv/python could not start the LTX-2 MLX runtime") from exc
+                raise ProviderUnavailableError("uv could not start the LTX-2 MLX runtime") from exc
             if completed.returncode != 0:
                 detail = (completed.stderr or completed.stdout).strip() or "unknown LTX-2 MLX error"
                 raise VideoAgentError(f"LTX-2 MLX generation failed: {detail[-4000:]}")
+            if not generated_output.is_file() or generated_output.stat().st_size == 0:
+                raise VideoAgentError("LTX-2 MLX runtime produced no usable MP4")
 
-            generated_video = _find_output(temp_root, "video.mp4")
-            if generated_video is None:
-                raise VideoAgentError("LTX-2 MLX runtime produced no video.mp4")
-            shutil.copy2(generated_video, request.output_path)
-
-            native_audio_path: Path | None = None
-            generated_audio = _find_output(temp_root, "audio.wav")
-            if self.native_audio and generated_audio is not None:
-                audio_dir = project_root / "audio" if project_root else request.output_path.parent
-                audio_dir.mkdir(parents=True, exist_ok=True)
-                native_audio_path = audio_dir / f"scene-{int(str(request.metadata.get('scene_index', 0))):04d}-ltx2.wav"
-                shutil.copy2(generated_audio, native_audio_path)
-
+            shutil.copy2(generated_output, request.output_path)
+            native_audio_path = _extract_native_audio(
+                request.output_path,
+                project_root,
+                int(str(request.metadata.get("scene_index", 0))),
+                enabled=self.native_audio,
+            )
             digest = hashlib.sha256(request.output_path.read_bytes()).hexdigest()
             width = int(str(request.metadata.get("width", 768)))
             height = int(str(request.metadata.get("height", 512)))
@@ -155,7 +156,8 @@ class LTX2MLXVideoProvider:
                         else str(native_audio_path) if native_audio_path is not None else None
                     ),
                     "frame_count": frames,
-                    "quantization_bits": self.bits,
+                    "pipeline": self.pipeline,
+                    "low_ram": self.low_ram,
                     "i2v_strength": self.i2v_strength,
                     "engine": "mlx",
                 },
@@ -164,9 +166,49 @@ class LTX2MLXVideoProvider:
             shutil.rmtree(temp_root, ignore_errors=True)
 
 
-def _find_output(root: Path, name: str) -> Path | None:
-    matches = sorted(root.rglob(name))
-    return matches[-1] if matches else None
+def _extract_native_audio(
+    video_path: Path,
+    project_root: Path | None,
+    scene_index: int,
+    *,
+    enabled: bool,
+) -> Path | None:
+    if not enabled:
+        return None
+    audio_dir = project_root / "audio" if project_root else video_path.parent
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    audio_path = audio_dir / f"scene-{scene_index:04d}-ltx2.wav"
+    command = [
+        "ffmpeg",
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vn",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
+        "-c:a",
+        "pcm_s16le",
+        str(audio_path),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=_child_environment(),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise VideoAgentError("failed to extract synchronized LTX-2 MLX audio") from exc
+    if completed.returncode != 0 or not audio_path.is_file() or audio_path.stat().st_size == 0:
+        return None
+    return audio_path
 
 
 def _project_root(metadata: dict[str, object]) -> Path | None:
