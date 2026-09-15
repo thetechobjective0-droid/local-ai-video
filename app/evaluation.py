@@ -83,9 +83,7 @@ def evaluate_project(
             narration_values.append(1.0)
         else:
             narration_values.append(_jaccard(visual_tokens, narration_tokens))
-    narration_alignment = (
-        sum(narration_values) / len(narration_values) if narration_values else 1.0
-    )
+    narration_alignment = sum(narration_values) / len(narration_values) if narration_values else 1.0
     scores.append(
         EvaluationScore(
             "narration_alignment",
@@ -160,3 +158,4 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     if not left or not right:
         return 0.0
     return len(left & right) / len(left | right)
+
