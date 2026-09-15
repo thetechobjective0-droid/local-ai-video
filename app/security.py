@@ -44,14 +44,18 @@ def audit_tree(root: Path) -> list[SecurityFinding]:
         SecurityFinding(
             "symlink_containment",
             not symlink_escapes,
-            "no storage symlink escapes found" if not symlink_escapes else "; ".join(symlink_escapes),
+            "no storage symlink escapes found"
+            if not symlink_escapes
+            else "; ".join(symlink_escapes),
         )
     )
     findings.append(
         SecurityFinding(
             "secret_files",
             not secret_files,
-            "no secret-like files found in storage" if not secret_files else "; ".join(secret_files),
+            "no secret-like files found in storage"
+            if not secret_files
+            else "; ".join(secret_files),
         )
     )
     return findings
@@ -59,6 +63,5 @@ def audit_tree(root: Path) -> list[SecurityFinding]:
 
 def local_only_findings(*urls: str) -> list[SecurityFinding]:
     """Audit configured service URLs against the loopback-only policy."""
-    return [
-        SecurityFinding("local_endpoint", validate_local_url(url), url) for url in urls
-    ]
+    return [SecurityFinding("local_endpoint", validate_local_url(url), url) for url in urls]
+
