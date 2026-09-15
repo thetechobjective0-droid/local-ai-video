@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Any
 
 from app.exceptions import ProviderUnavailableError, VideoAgentError
 from app.providers.video import VideoGenerationRequest, VideoResult
@@ -96,10 +95,11 @@ class LTX2MLXVideoProvider:
                 str(request.seed if request.seed is not None else 0),
                 "--output",
                 str(temp_root),
-                prompt,
             ]
-            if not self.native_audio:
-                command.insert(-2, "--no-audio")
+            if self.native_audio:
+                command.append(prompt)
+            else:
+                command.extend(["--no-audio", prompt])
             try:
                 completed = subprocess.run(
                     command,
@@ -157,7 +157,7 @@ class LTX2MLXVideoProvider:
                     "frame_count": frames,
                     "quantization_bits": self.bits,
                     "i2v_strength": self.i2v_strength,
-                    "engine": "mlxc",
+                    "engine": "mlx",
                 },
             )
         finally:
