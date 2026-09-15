@@ -10,7 +10,6 @@ echo "========================================"
 echo " Local AI Video"
 echo "========================================"
 echo
-
 echo "→ Checking required tools..."
 
 command -v uv >/dev/null 2>&1 || { echo "ERROR: uv is not installed."; exit 1; }
@@ -92,7 +91,6 @@ fi
 
 echo "→ Syncing LTX-2.3 MLX runtime dependencies..."
 uv --directory "$LTX_RUNTIME_DIR" sync --all-extras
-
 echo "✓ LTX runtime: $LTX_RUNTIME_DIR"
 echo "✓ LTX CLI   : ltx-2-mlx generate"
 
@@ -134,8 +132,8 @@ echo "LTX-2.3 q8 model pack is missing."
         exit 1
     fi
 
-    echo "→ Preparing Hugging Face download tooling..."
-    uv tool run --from "huggingface_hub[hf_xet]" huggingface-cli download \
+    echo "→ Downloading LTX-2.3 q8 model pack with the current Hugging Face CLI..."
+    uvx hf download \
         "$LTX_MODEL_REPO" \
         --local-dir "$LTX_MODEL_DIR"
 fi
