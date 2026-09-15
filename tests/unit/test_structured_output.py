@@ -54,7 +54,7 @@ def test_structured_repair_also_uses_schema_constraint() -> None:
 
     provider = RepairProvider(
         [
-            "{\"title\":\"AI\"}",
+            '{"title":"AI"}',
             '{"title":"AI","objective":"Explain agents","audience":"general",'
             '"tone":"clear","language":"en","duration_seconds":30,"visual_style":"simple"}',
         ]
