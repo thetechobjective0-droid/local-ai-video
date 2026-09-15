@@ -17,7 +17,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 | Phase | Scope | Status |
 |---|---|---|
-| 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED |
+| 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED; macOS memory probing hardened |
 | 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
 | 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED |
 | 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
@@ -35,7 +35,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation tests added |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
 | 21 | M4 resource/performance optimization | PLANNED; depends on measurements |
@@ -43,9 +43,11 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
-## Implemented foundation: Phases 0–13
+## Current implementation state
 
-The repository contains the validated local Director pipeline, typed domain contracts, local Ollama integration, Diffusers image generation, macOS Speech narration, deterministic timelines/subtitles, FFmpeg rendering, LTX image-to-video integration, deterministic media routing/fallback, content-addressed scene-video caching, deterministic QA, bounded recovery, loopback web UI/API, persistent JSON-backed planning/media jobs, progress reporting, restart recovery, final-video gating, target-machine acceptance reporting, renderer path containment, and stale planning-job recovery.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The immediate runtime blocker reported on the target Mac was an `os.sysconf("SC_AVPHYS_PAGES")` failure; `app/preflight.py` now treats unsupported `sysconf` keys as a platform case and falls back to macOS `sysctl` data rather than crashing the media worker.
+
+The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
 ## Phase 13 — Target-machine acceptance harness
 
@@ -57,69 +59,27 @@ uv run video-agent acceptance --project-id <PROJECT_ID>
 uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance-report.json
 ```
 
-`--no-media` is readiness-only. A full acceptance run must execute actual local model inference on the target M4. CI intentionally does not download model weights.
+`--no-media` is readiness-only. Full acceptance executes actual local model inference on the target M4.
 
 ## Phase 14 — Semantic / visual evaluation
 
-**In progress.** `app/evaluation.py` adds a deterministic baseline that scores project-prompt lexical alignment and adjacent-scene lexical continuity. It first requires hard deterministic QA to pass and writes a separate `evaluation-report.json` so evaluation can never override integrity QA.
+`app/evaluation.py` adds a deterministic baseline for project-prompt lexical alignment and adjacent-scene lexical continuity. It requires hard deterministic QA to pass and writes `evaluation-report.json` separately from integrity QA. The baseline is not represented as visual understanding.
 
-The baseline is deliberately not represented as visual understanding. Remaining work is local image/scene semantic evaluation, I2V motion quality, narration/script alignment, stronger storyboard-to-media consistency, visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
+Remaining work is local image/scene semantic evaluation, I2V motion quality, narration/script alignment, stronger storyboard-to-media consistency, visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
 
 ## Phase 17 — Security/locality hardening
 
-**In progress.** Renderer artifact resolution rejects absolute/relative paths that resolve outside the project directory. Planning-job paths use storage-root containment, and stale `queued`/`running` planning jobs become `interrupted` after restart. HTTP prompt/style/duration inputs have bounded sizes.
+Renderer artifact resolution rejects paths outside the project directory. Planning-job paths use storage-root containment, stale `queued`/`running` jobs become `interrupted` after restart, and HTTP prompt/style/duration inputs are bounded.
 
-Remaining work includes the complete filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and explicit threat-model documentation.
+Remaining work includes filesystem/symlink audit, prompt/manifest validation, subprocess audit, loopback verification, local-only inference review, secret/config handling, malformed artifact tests, dependency/security scanning, and threat-model documentation.
 
 ## Phase 18 — Testing and CI/CD
 
-Tests now include acceptance readiness/report contracts, planning restart recovery, deterministic semantic evaluation, and the existing provider/media/QA/API/job coverage. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains intentionally outside standard model-free CI.
+Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, and macOS resource probing. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
 
-## Phases 15–16
+## Phases 15–16, 19–24
 
-Use real failure data for advanced bounded recovery/refinement and formalize provider/model profiles, compatibility, readiness, hardware-class selection, and deterministic fallback graphs.
-
-## Phases 19–22
-
-Complete observability, persistence/schema migrations, M4 performance optimization based on real measurements, and the V1 production gate. V1 requires the full local workflow from brief through validated final MP4, dashboard playback, restart/resume, reproducibility, and target-machine acceptance.
-
-## Phases 23–24
-
-After V1 stability, consider richer production editing/features and longer-term runtime/platform evolution while preserving local-first privacy/resource boundaries.
-
-## Current execution order
-
-```text
-13 acceptance harness  [IMPLEMENTED]
-        ↓
-real M4 model/media acceptance  [TARGET MACHINE]
-        ↓
-14 semantic/visual evaluation  [IN PROGRESS]
-        ↓
-15 advanced recovery
-        ↓
-16 provider/model registry
-        ↓
-17 security hardening  [IN PROGRESS]
-        ↓
-18 test/CI expansion
-        ↓
-19 observability
-        ↓
-20 schema evolution
-        ↓
-21 M4 optimization
-        ↓
-22 V1 production gate
-        ↓
-23–24 V2/V3
-```
-
-## Immediate machine blocker
-
-The target-M4 runtime previously failed because the configured SDXL directory was empty. The application correctly failed locally rather than downloading remotely. Once the Hugging Face SDXL download completes, run the Phase 13 full acceptance command against a storyboard-ready project.
-
-The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
+Use real failure data for advanced bounded recovery/refinement; formalize provider/model profiles; complete observability and schema evolution; optimize M4 performance from measured data; then enforce the V1 production gate before V2/V3 expansion.
 
 ## Definition of done
 
