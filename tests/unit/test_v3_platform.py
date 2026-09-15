@@ -1,8 +1,8 @@
-from uuid import uuid4
+from uuid import UUID
 
+from app.orchestrator.media_strategy import VideoCapability
 from app.platform.experiments import ExperimentManifest, ExperimentResult, read_experiment, write_experiment
 from app.platform.registry import compatible_video_providers, list_providers
-from app.orchestrator.media_strategy import VideoCapability
 
 
 def test_provider_registry_is_versioned_and_local_only() -> None:
