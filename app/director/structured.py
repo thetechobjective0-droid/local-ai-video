@@ -42,13 +42,25 @@ def parse_json(text: str, model: type[T]) -> T:
 def generate_validated(
     provider: LLMProvider, request: LLMRequest, model: type[T], repair_attempts: int = 2
 ) -> T:
-    """Generate structured output and retry only bounded validation failures."""
+    """Generate structured output with bounded schema-aware repair attempts."""
     if repair_attempts < 0:
         raise ValueError("repair_attempts must be non-negative")
+    schema = model.model_json_schema()
     logger.info(
-        "[structured] generation START model=%s repair_attempts=%s", model.__name__, repair_attempts
+        "[structured] generation START model=%s repair_attempts=%s schema_enforced=true",
+        model.__name__,
+        repair_attempts,
     )
-    response = provider.generate(request)
+    constrained_request = LLMRequest(
+        prompt=request.prompt,
+        system=request.system,
+        model=request.model,
+        temperature=request.temperature,
+        top_p=request.top_p,
+        top_k=request.top_k,
+        format=schema,
+    )
+    response = provider.generate(constrained_request)
     logger.info("[structured] initial response received model=%s", model.__name__)
     try:
         result = parse_json(response.text, model)
@@ -71,19 +83,21 @@ def generate_validated(
         )
         repair_request = LLMRequest(
             system=(
-                "Repair the supplied model output. Return ONLY valid JSON matching "
-                "the requested schema. Do not add commentary or executable code."
+                "Repair the supplied model output. Return ONLY JSON that conforms exactly "
+                "to the supplied schema. Preserve valid fields, remove unknown fields, "
+                "and correct invalid types/values. Do not add commentary or executable code."
             ),
             prompt=(
-                f"Schema: {model.model_json_schema()}\n"
+                f"JSON Schema: {json.dumps(schema, ensure_ascii=False)}\n"
                 f"Invalid output: {response.text}\n"
-                f"Previous validation error: {last_error}"
+                f"Validation error: {last_error}\n"
+                "Return a complete replacement JSON object; do not describe the repair."
             ),
             model=request.model,
             temperature=0,
             top_p=1,
             top_k=request.top_k,
-            format="json",
+            format=schema,
         )
         response = provider.generate(repair_request)
         logger.info(
