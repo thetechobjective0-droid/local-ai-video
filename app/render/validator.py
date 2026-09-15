@@ -1,6 +1,7 @@
 """Post-render validation for local video outputs."""
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -37,6 +38,7 @@ def validate_video(
             capture_output=True,
             text=True,
             timeout=30,
+            env=_child_process_environment(),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise VideoAgentError("ffprobe could not inspect rendered video") from exc
@@ -69,6 +71,14 @@ def validate_video(
     if _fps(video.get("r_frame_rate")) != expected_fps:
         raise VideoAgentError("rendered FPS does not match the timeline")
     return {"duration_seconds": duration, "video_stream": video, "audio_stream": audio}
+
+
+def _child_process_environment() -> dict[str, str]:
+    """Remove macOS malloc diagnostics from media subprocesses."""
+    env = os.environ.copy()
+    env.pop("MallocStackLogging", None)
+    env.pop("MallocStackLoggingNoCompact", None)
+    return env
 
 
 def _resolution(value: str) -> tuple[int, int]:
