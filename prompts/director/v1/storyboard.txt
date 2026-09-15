@@ -3,9 +3,10 @@ For each scene provide only these fields: index, start_seconds, duration_seconds
 Do NOT provide an id; the application generates valid UUIDs automatically.
 Use contiguous integer scene indexes starting at 1. Use non-overlapping timing with no gaps.
 The first scene must start at 0. The final scene must end exactly at the target duration when practical, otherwise within 0.5 seconds.
-Keep the number of scenes small enough for the requested duration. For a 10-second video, use 2-4 scenes.
+For real AI video generation, keep every scene between 5 and 10 seconds. For longer requested videos, create more scenes rather than making individual scenes longer than 10 seconds.
 All timing values must be JSON numbers. All text fields must be JSON strings.
 Do not add any fields not requested above.
+For motion_prompt, describe concrete temporal actions: subject movement, object movement, environmental movement, and camera movement. Avoid describing a still frame only.
 Creative brief: {brief}
 Script: {script}
 Target duration: {duration_seconds}
