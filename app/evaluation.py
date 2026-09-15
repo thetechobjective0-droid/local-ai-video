@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 import json
 import re
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from uuid import UUID
 
@@ -21,6 +21,16 @@ class EvaluationScore:
 
 
 @dataclass(frozen=True)
+class RefinementProposal:
+    """Bounded, deterministic action guidance derived from evaluation scores."""
+
+    priority: int
+    target: str
+    action: str
+    reason: str
+
+
+@dataclass(frozen=True)
 class EvaluationReport:
     passed: bool
     scores: tuple[EvaluationScore, ...]
@@ -34,6 +44,47 @@ class EvaluationReport:
             "hard_qa_passed": self.hard_qa_passed,
             "scores": [asdict(score) for score in self.scores],
         }
+
+    def refinement_proposals(self, *, minimum_score: float = 0.15, max_proposals: int = 3) -> tuple[RefinementProposal, ...]:
+        """Return at most a small fixed number of safe refinement recommendations."""
+        if max_proposals <= 0:
+            return ()
+        proposals: list[RefinementProposal] = []
+        for priority, score in enumerate(
+            sorted(self.scores, key=lambda item: item.score), start=1
+        ):
+            if score.score >= minimum_score or len(proposals) >= max_proposals:
+                continue
+            action, target = {
+                "prompt_alignment": (
+                    "review scene prompts against the source prompt before regenerating media",
+                    "project",
+                ),
+                "scene_continuity": (
+                    "regenerate the weakest scene boundary after reviewing adjacent scene prompts",
+                    "scene_boundary",
+                ),
+                "narration_alignment": (
+                    "revise narration for visual alignment before regenerating audio",
+                    "narration",
+                ),
+                "storyboard_consistency": (
+                    "align motion prompts with image prompts before regenerating video",
+                    "storyboard",
+                ),
+            }.get(
+                score.name,
+                ("review the failed evaluation dimension before regeneration", score.name),
+            )
+            proposals.append(
+                RefinementProposal(
+                    priority=priority,
+                    target=target,
+                    action=action,
+                    reason=f"{score.name} score {score.score:.3f} is below minimum {minimum_score:.3f}",
+                )
+            )
+        return tuple(proposals)
 
 
 def evaluate_project(
@@ -158,4 +209,3 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     if not left or not right:
         return 0.0
     return len(left & right) / len(left | right)
-
