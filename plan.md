@@ -61,7 +61,7 @@ Security hardening is complete. `FilesystemStore.resolve_path()` and `project_pa
 
 ## Phase 19 — Observability / operational diagnostics
 
-`app/observability.py` provides bounded in-process counters, duration observations, timer context management, and serializable summaries. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
+`app/observability.py` provides bounded in-process counters, bounded duration observations, timer context management, and serializable summaries. Counter names and duration series are capped to prevent an accidental unbounded-memory growth path. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
 
 ## Phase 20 — Persistence / schema migrations
 
