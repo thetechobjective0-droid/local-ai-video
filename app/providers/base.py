@@ -1,7 +1,7 @@
 """Provider contracts shared by local model adapters."""
 
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -12,7 +12,7 @@ class LLMRequest:
     temperature: float = 0.2
     top_p: float = 0.9
     top_k: int = 40
-    format: str | None = "json"
+    format: str | dict[str, Any] | None = "json"
 
 
 @dataclass(frozen=True)
