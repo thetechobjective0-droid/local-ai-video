@@ -30,7 +30,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling lifecycle race fixed, loading UX, stale-refresh, video readiness, and determinate progress UI hardened |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
-| 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
+| 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 acceptance remains an execution requirement |
 | 14 | Semantic/visual evaluation | IMPLEMENTED baseline; deterministic alignment, continuity, narration, and storyboard consistency are covered; true model-based visual evaluation remains hardware/model acceptance work |
 | 15 | Advanced recovery/refinement | IMPLEMENTED; bounded provider fallback/recovery paths are in place |
 | 16 | Provider/model registry evolution | IMPLEMENTED; typed provider capability/factory boundaries are in place |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 14 now has a deterministic semantic/continuity baseline; its remaining model-based visual quality work is explicitly target-model acceptance rather than a CI requirement. Phases 15–22 have production-oriented implementation primitives. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, idempotent schema migration, operational CLI commands, and a V1 production gate. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments.
+Phases 0–22 have implementation coverage. Phase 14 now has a deterministic semantic/continuity baseline; its remaining model-based visual quality work is explicitly target-model acceptance rather than a CI requirement. Phases 15–22 have production-oriented implementation primitives. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, idempotent schema migration, operational CLI commands, and a V1 production gate. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. Phase-specific implementation documents now cover Phases 14, 18, and 21.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -53,7 +53,7 @@ Ruff 0.16.7 formatting is normalized across the previously failing application f
 
 ## Phase 14 — Semantic / visual evaluation
 
-`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding. This baseline is implemented and suitable for deterministic CI. Model-based image/scene semantic evaluation, I2V motion quality, stronger visual continuity, and final-video perceptual evaluation remain target-model acceptance work and must not be represented as passed by CI.
+`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding. Model-based image/scene semantic evaluation, I2V motion quality, stronger visual continuity, and final-video perceptual evaluation remain target-model acceptance work and must not be represented as passed by CI.
 
 ## Phase 17 — Security/locality hardening
 
