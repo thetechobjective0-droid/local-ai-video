@@ -1,122 +1,63 @@
-"""Persistent local background job orchestration for project media generation."""
+"""Persistent background job orchestration for local media generation."""
 
-from __future__ import annotations
-
-from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime, timezone
-import json
 import logging
-from pathlib import Path
 from threading import Lock
-from typing import List
 from uuid import UUID, uuid4
-import tempfile
-
-from pydantic import BaseModel, ConfigDict, Field
+from concurrent.futures import Future, ThreadPoolExecutor
+from typing import List
 
 from app.config import load_config
+from app.generation.image_recovery import generate_scene_image_with_recovery
+from app.generation.video_recovery import generate_scene_video_with_recovery
+from app.models.job import MediaJob
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
-from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.factory import build_video_fallback, build_video_provider
 from app.storage.filesystem import FilesystemStore
 
 logger = logging.getLogger(__name__)
 
 
-class MediaJob(BaseModel):
-    """Durable state for one project media generation request."""
-
-    model_config = ConfigDict(extra="forbid")
-    id: UUID
-    project_id: UUID
-    state: str = Field(pattern="^(queued|running|completed|failed|interrupted)$")
-    created_at: datetime
-    updated_at: datetime
-    started_at: datetime | None = None
-    completed_at: datetime | None = None
-    error: str | None = None
-    scene_count: int = 0
-    completed_scenes: int = 0
-
-
 class MediaJobManager:
-    """Small in-process worker pool backed by atomic JSON job manifests."""
+    """Manage durable local media jobs with bounded worker concurrency."""
 
-    def __init__(self, store: FilesystemStore, *, max_workers: int = 1) -> None:
+    def __init__(self, store: FilesystemStore, max_workers: int = 1) -> None:
         self.store = store
-        self._executor = ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="video-agent-job"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="media")
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
-        logger.info(
-            "[media] manager initialized worker_count=%s storage=%s", max_workers, store.root
-        )
-        self._recover_stale_jobs()
 
-    def _path(self, job_id: UUID) -> Path:
-        jobs_dir = self.store.root / "jobs"
-        jobs_dir.mkdir(parents=True, exist_ok=True)
-        path = (jobs_dir / f"{job_id}.json").resolve()
-        if jobs_dir.resolve() not in path.parents:
-            raise ValueError("job path escapes storage root")
-        return path
+    def _job_path(self, job_id: UUID):
+        return self.store.root / "jobs" / f"{job_id}.json"
 
     def _save(self, job: MediaJob) -> MediaJob:
-        path = self._path(job.id)
-        payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False
-        ) as temp:
-            temp.write(payload)
-            temp_path = Path(temp.name)
-        temp_path.replace(path)
+        self.store.write_json(self.store.root / "jobs", f"{job.id}.json", job.model_dump(mode="json"))
         return job
 
-    def _recover_stale_jobs(self) -> None:
-        """A new process cannot own old worker threads, so mark running jobs interrupted."""
-        jobs_dir = self.store.root / "jobs"
-        for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
-            try:
-                job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
-            if job.state in {"queued", "running"}:
-                logger.warning(
-                    "[media] recovering stale job=%s previous_state=%s", job.id, job.state
-                )
-                self._save(
-                    job.model_copy(
-                        update={
-                            "state": "interrupted",
-                            "updated_at": datetime.now(timezone.utc),
-                            "error": "worker process restarted",
-                        }
-                    )
-                )
-
     def get(self, job_id: UUID) -> MediaJob:
-        path = self._path(job_id)
+        path = self._job_path(job_id)
         if not path.is_file():
-            raise FileNotFoundError(str(job_id))
-        return MediaJob.model_validate(json.loads(path.read_text(encoding="utf-8")))
+            raise FileNotFoundError(job_id)
+        return MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
 
-    def list(self, project_id: UUID | None = None) -> List[MediaJob]:
+    def list(self, project_id: UUID) -> List[MediaJob]:
+        jobs: List[MediaJob] = []
         jobs_dir = self.store.root / "jobs"
-        result: List[MediaJob] = []
-        for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
+        if not jobs_dir.exists():
+            return jobs
+        for path in sorted(jobs_dir.glob("*.json")):
             try:
                 job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
-            if project_id is None or job.project_id == project_id:
-                result.append(job)
-        return sorted(result, key=lambda item: item.created_at, reverse=True)
+            if job.project_id == project_id:
+                jobs.append(job)
+        return jobs
 
     def submit(self, project_id: UUID) -> MediaJob:
-        logger.info("[media] submit START project=%s", project_id)
         scenes = self._load_scenes(project_id)
         now = datetime.now(timezone.utc)
         job = MediaJob(
@@ -173,6 +114,7 @@ class MediaJobManager:
         try:
             logger.info("[media] loading configuration job=%s", job_id)
             config = load_config(None)
+            scenes = self._load_scenes(job.project_id)
             logger.info(
                 "[media] config image=%s video=%s device=%s",
                 config.image.model_path,
@@ -183,10 +125,22 @@ class MediaJobManager:
                 raise ValueError("local_only must remain enabled")
             logger.info("[media] initializing video provider=%s", config.video.provider)
             video_provider = build_video_provider(config)
-            logger.info("[media] initializing image provider model=%s", config.image.model_path)
-            image_provider = DiffusersImageProvider(
-                config.image.model_path, device=config.image.device
-            )
+
+            # Image generation is optional when every scene already has a persisted
+            # image asset. Do not initialize Diffusers just to process existing assets;
+            # this keeps resume/media jobs independent of an unused image model.
+            image_provider = None
+            if any(scene.image_asset is None for scene in scenes):
+                logger.info(
+                    "[media] initializing image provider model=%s because image assets are missing",
+                    config.image.model_path,
+                )
+                image_provider = DiffusersImageProvider(
+                    config.image.model_path, device=config.image.device
+                )
+            else:
+                logger.info("[media] all scenes already have image assets; image provider not required")
+
             capability = get_provider_capabilities(config.video.provider).video
             logger.info("[media] provider capability=%s", capability)
 
@@ -200,7 +154,7 @@ class MediaJobManager:
             generate_project_media(
                 self.store,
                 job.project_id,
-                self._load_scenes(job.project_id),
+                scenes,
                 video_provider=video_provider,
                 image_provider=image_provider,
                 image_model=config.image.model_path.name,
@@ -240,7 +194,7 @@ _manager_lock = Lock()
 
 
 def get_job_manager(store: FilesystemStore) -> MediaJobManager:
-    """Return the process-local singleton worker manager."""
+    """Return the process-wide media job manager."""
     global _manager
     with _manager_lock:
         if _manager is None:
