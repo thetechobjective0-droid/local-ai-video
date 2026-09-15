@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from app.orchestrator.checkpoints import checkpoint_path
 from app.storage.filesystem import FilesystemStore
 
 RegenerationStage = Literal["image", "audio", "video"]
@@ -24,8 +24,6 @@ def _manifest_path(project_dir: Path, scene_index: int, stage: str) -> Path:
 
 def _artifact_path_from_manifest(path: Path) -> Path | None:
     try:
-        import json
-
         payload = json.loads(path.read_text(encoding="utf-8"))
         value = payload.get("path")
     except (OSError, ValueError, TypeError):
@@ -46,10 +44,8 @@ def invalidate_scene_dependencies(
     project_id: UUID,
     scene_index: int,
     stage: RegenerationStage,
-    *,
-    job_id: UUID | str | None = None,
 ) -> list[str]:
-    """Delete stale downstream artifacts/checkpoints while preserving unrelated scenes."""
+    """Delete stale scene/downstream outputs while preserving unrelated scenes."""
     project_dir = store.project_dir(project_id)
     removed: list[str] = []
     for dependency in _STAGE_ARTIFACTS[stage]:
@@ -74,12 +70,22 @@ def invalidate_scene_dependencies(
             path.unlink()
             removed.append(str(path.relative_to(project_dir)))
 
-    if job_id is not None:
-        checkpoints = project_dir / "checkpoints"
-        for checkpoint_stage in ("media", "finalize"):
-            path = checkpoint_path(store.root, project_id, str(job_id), checkpoint_stage)
-            if path.is_file():
-                path.unlink()
-                removed.append(str(path.relative_to(project_dir)))
+    checkpoints = project_dir / "checkpoints"
+    if checkpoints.is_dir():
+        for path in (*checkpoints.glob("*-media.json"), *checkpoints.glob("*-finalize.json")):
+            path.unlink()
+            removed.append(str(path.relative_to(project_dir)))
 
     return removed
+
+
+def clear_scene_stage_outputs(scene, stage: RegenerationStage):
+    """Clear Scene references that would otherwise point at invalidated artifacts."""
+    updates: dict[str, object] = {"status": "pending"}
+    if stage == "image":
+        updates.update({"image_asset": None, "video_asset": None})
+    elif stage == "audio":
+        updates.update({"audio_asset": None})
+    else:
+        updates.update({"video_asset": None})
+    return scene.model_copy(update=updates)
