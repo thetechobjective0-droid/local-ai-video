@@ -84,6 +84,12 @@ def generate_project_media(
     width: int = 704,
     height: int = 384,
     fps: int = 16,
+    inference_steps: int = 40,
+    guidance_scale: float = 3.0,
+    guidance_rescale: float = 0.0,
+    image_cond_noise_scale: float = 0.025,
+    decode_timestep: float = 0.05,
+    decode_noise_scale: float | None = 0.025,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[SceneMediaResult]:
     """Generate project media with bounded recovery and deterministic fallback."""
@@ -167,21 +173,32 @@ def generate_project_media(
             )
             used_fallback = False
             fallback_metadata: dict[str, object] | None = None
+            video_kwargs = {
+                "width": width,
+                "height": height,
+                "fps": fps,
+                "inference_steps": inference_steps,
+                "guidance_scale": guidance_scale,
+                "guidance_rescale": guidance_rescale,
+                "image_cond_noise_scale": image_cond_noise_scale,
+                "decode_timestep": decode_timestep,
+                "decode_noise_scale": decode_noise_scale,
+            }
             if selected is MediaType.IMAGE_TO_VIDEO:
                 try:
                     logger.info(
-                        "[media] scene=%s video generation START provider=%s",
+                        "[media] scene=%s video generation START provider=%s steps=%s guidance=%.2f",
                         scene.index,
                         getattr(video_provider, "provider_name", video_provider.__class__.__name__),
+                        inference_steps,
+                        guidance_scale,
                     )
                     video_result = generate_scene_video_with_recovery(
                         video_provider,
                         store,
                         project_id,
                         current,
-                        width=width,
-                        height=height,
-                        fps=fps,
+                        **video_kwargs,
                     )
                     logger.info(
                         "[media] scene=%s video generation COMPLETE attempts=%s strategies=%s",
@@ -226,9 +243,7 @@ def generate_project_media(
                         store,
                         project_id,
                         current,
-                        width=width,
-                        height=height,
-                        fps=fps,
+                        **video_kwargs,
                     )
                     selected = MediaType.IMAGE_MOTION
                     used_fallback = True
@@ -249,7 +264,7 @@ def generate_project_media(
                     getattr(motion_provider, "provider_name", motion_provider.__class__.__name__),
                 )
                 video_result = generate_scene_video_with_recovery(
-                    motion_provider, store, project_id, current, width=width, height=height, fps=fps
+                    motion_provider, store, project_id, current, **video_kwargs
                 )
                 logger.info(
                     "[media] scene=%s motion generation COMPLETE attempts=%s strategies=%s",
@@ -279,6 +294,14 @@ def generate_project_media(
                 **current.metadata,
                 "selected_media_type": selected.value,
                 "media_fallback_used": used_fallback,
+                "video_quality": {
+                    "inference_steps": inference_steps,
+                    "guidance_scale": guidance_scale,
+                    "guidance_rescale": guidance_rescale,
+                    "image_cond_noise_scale": image_cond_noise_scale,
+                    "decode_timestep": decode_timestep,
+                    "decode_noise_scale": decode_noise_scale,
+                },
                 "resource_snapshot": {
                     "total_memory_bytes": resources.total_memory_bytes,
                     "available_memory_bytes": resources.available_memory_bytes,
