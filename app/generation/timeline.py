@@ -26,6 +26,9 @@ def build_timeline(
         end = scene.start_seconds + scene.duration_seconds
         if end > project.duration_seconds + 0.05:
             raise VideoAgentError(f"scene {scene.index} exceeds project duration")
+        transition = scene.metadata.get("transition", "cut")
+        if not isinstance(transition, str) or not transition.strip():
+            transition = "cut"
         entries.append(
             TimelineScene(
                 scene_id=scene.id,
@@ -38,6 +41,7 @@ def build_timeline(
                 audio_asset=scene.audio_asset,
                 subtitle_start_seconds=scene.start_seconds if scene.narration.strip() else None,
                 subtitle_end_seconds=end if scene.narration.strip() else None,
+                transition=transition,
                 motion=scene.motion_prompt or None,
             )
         )
