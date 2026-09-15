@@ -1,10 +1,47 @@
 # LTX-2.3 MLX Runtime
 
-The production Apple-Silicon video path uses the local `dgrauet/ltx-2-mlx` runtime. It is a pure MLX port of LTX-2.3 with text-to-video, image-to-video, synchronized audio, two-stage generation, and low-memory block streaming. The published runtime targets Apple Silicon M1/M2/M3/M4 and recommends 32 GB+ RAM for the q8 model; this project targets an M4 with 36 GB unified memory. citeturn653340search0
+The production Apple-Silicon video path uses the local `dgrauet/ltx-2-mlx` runtime. It is a pure MLX port of LTX-2.3 with text-to-video, image-to-video, synchronized audio, two-stage generation, and low-memory block streaming. The published runtime targets Apple Silicon and the q8 model is intended for local MLX inference. citeturn811721search1turn811721search2
 
-The application invokes the runtime with `uv run --offline`, so generation never downloads packages or model weights. All model assets must be prepared locally first.
+The application invokes the runtime with `uv run --offline`, so generation itself never downloads packages or model weights. `run.sh` can prepare the runtime and, with confirmation, download the model pack into the configured local directory.
 
-## Prepare the runtime
+## One-command setup
+
+From the repository root:
+
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+When the q8 model is missing, `run.sh` asks whether it should download `dgrauet/ltx-2.3-mlx-q8` into:
+
+```text
+data/models/ltx-2.3-mlx-q8
+```
+
+The current q8 repository is large (about 72 GB according to Hugging Face), so the download is intentionally interactive by default. citeturn811721search2
+
+To make the behavior non-interactive:
+
+```bash
+LTX_AUTO_DOWNLOAD_MODEL=yes ./run.sh
+```
+
+To force the old fail-fast/manual-preparation behavior:
+
+```bash
+LTX_AUTO_DOWNLOAD_MODEL=no ./run.sh
+```
+
+The model source can also be overridden for a compatible local model pack:
+
+```bash
+LTX_MODEL_REPO=dgrauet/ltx-2.3-mlx-q8 \
+LTX_MODEL_DIR=./data/models/ltx-2.3-mlx-q8 \
+./run.sh
+```
+
+## Prepare the runtime manually
 
 ```bash
 mkdir -p data/runtime
@@ -13,13 +50,15 @@ cd data/runtime/ltx-2-mlx
 uv sync --all-extras
 ```
 
-Prepare a local LTX-2.3 q8 model pack at:
+Prepare the q8 model pack with Hugging Face:
 
-```text
-data/models/ltx-2.3-mlx-q8
+```bash
+uv tool run --from "huggingface_hub[hf_xet]" huggingface-cli download \
+  dgrauet/ltx-2.3-mlx-q8 \
+  --local-dir "$PWD/../../data/models/ltx-2.3-mlx-q8"
 ```
 
-The MLX runtime also supports q4 and bf16 variants, but q8 is the default for the 36 GB M4 target. The runtime documents q8 as the recommended memory/quality compromise and supports `--low-ram` block streaming when additional memory protection is needed. citeturn660719search0
+The model repository documents the same local-download flow and includes the required MLX safetensors, audio VAE, VAE, vocoder, and configuration files. citeturn811721search2
 
 ## Application configuration
 
@@ -39,7 +78,7 @@ video:
   fps: 24
 ```
 
-The two-stage pipeline is the production default because the MLX runtime documents it as the recommended mode for most use cases. citeturn653340search0
+The MLX runtime exposes `generate` for T2V/I2V generation and supports `--two-stage`, `--two-stages-hq`, `--low-ram`, and q8 model weights. citeturn811721search1
 
 ## Generation contract
 
@@ -56,6 +95,6 @@ A failed model invocation is a hard failure by default. The system cannot silent
 
 ## Performance and memory
 
-For a 36 GB M4, start with q8 + `two-stage` + `low_ram: true` at 704x480 / 24 FPS. The external MLX runtime provides additional `--tile-frames`, `--tile-spatial`, and lower-bit model options for larger workloads. citeturn660719search0
+For the 36 GB M4 target, start with q8 + `two-stage` + `low_ram: true` at 704x480 / 24 FPS. The runtime documents block-streaming and additional tiling options for workloads that exceed available unified memory. citeturn811721search1
 
-The target-machine acceptance step must still measure actual generation latency, peak unified memory, thermals, and temporal quality on the user's M4 because those values cannot be established from repository code alone.
+The target-machine acceptance step must still measure actual generation latency, peak unified memory, thermals, and temporal/audio quality on the user's M4 because those values cannot be established from repository code alone.
