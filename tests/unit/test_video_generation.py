@@ -27,7 +27,16 @@ class FakeVideoProvider:
         )
 
 
-def test_generate_scene_video_persists_artifact_and_scene(tmp_path: Path) -> None:
+def test_generate_scene_video_persists_artifact_and_scene(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        "app.generation.video.validate_scene_video",
+        lambda *args, **kwargs: {
+            "duration_seconds": kwargs["expected_duration"],
+            "width": kwargs["expected_resolution"][0],
+            "height": kwargs["expected_resolution"][1],
+            "fps": kwargs["expected_fps"],
+        },
+    )
     project_id = uuid4()
     store = FilesystemStore(tmp_path)
     project_dir = store.project_dir(project_id)
