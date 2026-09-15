@@ -87,8 +87,12 @@ def _read_wave_info(path: Path) -> tuple[float, int, int]:
             frames = audio.getnframes()
             sample_rate = audio.getframerate()
             channels = audio.getnchannels()
+            sample_width = audio.getsampwidth()
+            payload = audio.readframes(frames)
     except (wave.Error, OSError) as exc:
         raise VideoAgentError("TTS provider returned an invalid WAV file") from exc
-    if sample_rate <= 0 or channels <= 0 or frames <= 0:
+    if sample_rate <= 0 or channels <= 0 or frames <= 0 or sample_width <= 0:
         raise VideoAgentError("TTS provider returned an empty WAV file")
+    if not payload or not any(payload):
+        raise VideoAgentError("macOS TTS returned entirely silent audio")
     return frames / sample_rate, sample_rate, channels
