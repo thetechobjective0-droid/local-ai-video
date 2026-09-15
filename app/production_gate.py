@@ -43,8 +43,14 @@ def run_production_gate(
     """Require locality, storage security, deterministic QA and semantic baseline pass."""
     config = config or AppConfig()
     checks: list[GateCheck] = []
-    checks.append(GateCheck("local_only", config.runtime.local_only, "local_only must remain enabled"))
-    checks.append(GateCheck("schema", store.load_project(project_id).schema_version == "1.1", "project schema"))
+    checks.append(
+        GateCheck("local_only", config.runtime.local_only, "local_only must remain enabled")
+    )
+    checks.append(
+        GateCheck(
+            "schema", store.load_project(project_id).schema_version == "1.1", "project schema"
+        )
+    )
     endpoints = [config.llm.base_url]
     checks.extend(
         GateCheck(f"{finding.name}:{index}", finding.passed, finding.detail)
@@ -79,3 +85,4 @@ def write_gate_report(report: ProductionGateReport, path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
     return path
+
