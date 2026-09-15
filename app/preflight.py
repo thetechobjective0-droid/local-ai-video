@@ -27,9 +27,7 @@ def _sysconf_memory(name: str) -> int | None:
 
 def _memory_bytes_macos() -> tuple[int, int]:
     """Return total and available physical memory on macOS."""
-    total = int(
-        subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()
-    )
+    total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip())
 
     vm_stat = subprocess.check_output(["vm_stat"], text=True)
     page_size = 4096
