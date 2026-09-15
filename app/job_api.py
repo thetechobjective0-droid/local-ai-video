@@ -7,10 +7,22 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.config import load_config
+from app.generation.audio import generate_scene_audio
+from app.generation.image_recovery import generate_scene_image_with_recovery
+from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus, VideoProject
-from app.orchestrator.jobs import MediaJobManager, get_job_manager
-from app.orchestrator.planning_jobs import PlanningJob, PlanningJobManager, get_planning_job_manager
+from app.models.scene import Scene
+from app.orchestrator.jobs import (
+    MediaJobManager,
+    _finalize_project_media,
+    get_job_manager,
+)
+from app.orchestrator.regeneration import clear_scene_stage_outputs, invalidate_scene_dependencies
+from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.factory import build_video_provider
+from app.providers.macos_tts import MacOSTTSProvider
 from app.storage.filesystem import FilesystemStore
+from app.providers.capabilities import get_provider_capabilities
 
 router = APIRouter()
 
@@ -26,6 +38,14 @@ class CreateProjectRequest(BaseModel):
     aspect_ratio: str = Field(default="16:9", min_length=3, max_length=16)
 
 
+class RegenerateSceneRequest(BaseModel):
+    """Validated selective scene regeneration request."""
+
+    model_config = {"extra": "forbid"}
+
+    stage: str = Field(default="video", pattern="^(image|audio|video)$")
+
+
 def _store() -> FilesystemStore:
     return FilesystemStore(load_config(None).storage.root)
 
@@ -34,11 +54,13 @@ def _manager() -> MediaJobManager:
     return get_job_manager(_store())
 
 
-def _planning_manager() -> PlanningJobManager:
+def _planning_manager():
+    from app.orchestrator.planning_jobs import PlanningJobManager, get_planning_job_manager
+
     return get_planning_job_manager(_store())
 
 
-def _planning_job_response(store: FilesystemStore, job: PlanningJob) -> dict[str, Any]:
+def _planning_job_response(store: FilesystemStore, job) -> dict[str, Any]:
     """Expose durable project completion over stale background-job state."""
     project = store.load_project(job.project_id)
     if project.status == ProjectStatus.STORYBOARD_READY and job.state != "completed":
@@ -46,6 +68,27 @@ def _planning_job_response(store: FilesystemStore, job: PlanningJob) -> dict[str
             update={"state": "completed", "completed_stage": "storyboard", "error": None}
         )
     return job.model_dump(mode="json")
+
+
+def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
+    for path in sorted(store.project_dir(project_id).glob("scene-*.json")):
+        if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
+            continue
+        try:
+            scene = Scene.model_validate_json(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if scene.id == scene_id:
+            return scene
+    raise HTTPException(status_code=404, detail="scene not found")
+
+
+def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
+    store.write_json(
+        store.project_dir(project_id),
+        f"scene-{scene.index:04d}.json",
+        scene.model_dump(mode="json"),
+    )
 
 
 @router.post("/api/projects/{project_id}/jobs/media", status_code=202)
@@ -74,6 +117,114 @@ def get_media_job(job_id: UUID) -> dict[str, Any]:
 @router.get("/api/projects/{project_id}/jobs")
 def list_media_jobs(project_id: UUID) -> list[dict[str, Any]]:
     return [job.model_dump(mode="json") for job in _manager().list(project_id)]
+
+
+@router.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
+def regenerate_scene(
+    project_id: UUID, scene_id: UUID, request: RegenerateSceneRequest
+) -> dict[str, Any]:
+    """Regenerate a scene and every artifact downstream of the requested stage."""
+    config = load_config(None)
+    if not config.runtime.local_only:
+        raise HTTPException(status_code=503, detail="local_only must remain enabled")
+    store = FilesystemStore(config.storage.root)
+    scene = _scene(store, project_id, scene_id)
+    removed = invalidate_scene_dependencies(store, project_id, scene.id if False else scene.index, request.stage)
+    scene = clear_scene_stage_outputs(scene, request.stage)
+    _persist_scene(store, project_id, scene)
+
+    regenerated: list[str] = []
+    attempts = 0
+    strategies: list[str] = []
+    try:
+        if request.stage == "image":
+            image_provider = DiffusersImageProvider(
+                config.image.model_path, device=config.image.device
+            )
+            image_result = generate_scene_image_with_recovery(
+                image_provider,
+                store,
+                project_id,
+                scene,
+                model=config.image.model_path.name,
+                width=config.image.width,
+                height=config.image.height,
+                steps=config.image.steps,
+                guidance_scale=config.image.guidance_scale,
+            )
+            scene = image_result.scene.model_copy(
+                update={
+                    "metadata": {
+                        **image_result.scene.metadata,
+                        "image_recovery": {
+                            "attempts": image_result.attempts,
+                            "strategies": list(image_result.strategies),
+                        },
+                    }
+                }
+            )
+            _persist_scene(store, project_id, scene)
+            regenerated.append("image")
+            attempts = image_result.attempts
+            strategies.extend(image_result.strategies)
+            request = request.model_copy(update={"stage": "video"})
+            scene = clear_scene_stage_outputs(scene, "video")
+            _persist_scene(store, project_id, scene)
+
+        if request.stage == "audio":
+            audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
+            _, scene = generate_scene_audio(
+                audio_provider,
+                store,
+                project_id,
+                scene,
+                voice=config.tts.voice,
+                rate=config.tts.rate,
+            )
+            regenerated.append("audio")
+            attempts = max(attempts, 1)
+            strategies.append("original")
+        elif request.stage == "video":
+            video_provider = build_video_provider(config)
+            video_result = generate_scene_video_with_recovery(
+                video_provider,
+                store,
+                project_id,
+                scene,
+                width=config.video.width,
+                height=config.video.height,
+                fps=config.video.fps,
+            )
+            scene = video_result.scene.model_copy(
+                update={
+                    "metadata": {
+                        **video_result.scene.metadata,
+                        "video_recovery": {
+                            "attempts": video_result.attempts,
+                            "strategies": list(video_result.strategies),
+                        },
+                    }
+                }
+            )
+            regenerated.append("video")
+            attempts = max(attempts, video_result.attempts)
+            strategies.extend(video_result.strategies)
+
+        _persist_scene(store, project_id, scene)
+        _finalize_project_media(store, project_id)
+    except Exception as exc:
+        _persist_scene(store, project_id, scene)
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return {
+        "scene": scene.model_dump(mode="json"),
+        "requested_stage": request.stage,
+        "regenerated_stages": regenerated,
+        "removed_artifacts": removed,
+        "attempts": attempts,
+        "strategies": strategies,
+        "finalized": True,
+    }
 
 
 @router.post("/api/projects", status_code=202)
