@@ -1,4 +1,4 @@
-from app.evaluation import _jaccard, _scene_text, _tokens
+from app.evaluation import EvaluationReport, EvaluationScore, _jaccard, _scene_text, _tokens
 from app.models.scene import Scene
 
 
@@ -30,3 +30,23 @@ def test_scene_text_contains_storyboard_and_narration_fields() -> None:
     assert "robot" in text
     assert "city" in text
     assert "walks" in text
+
+
+def test_refinement_proposals_are_bounded_and_sorted_by_score() -> None:
+    report = EvaluationReport(
+        passed=False,
+        hard_qa_passed=True,
+        scores=(
+            EvaluationScore("prompt_alignment", 0.40, "ok"),
+            EvaluationScore("narration_alignment", 0.01, "low"),
+            EvaluationScore("storyboard_consistency", 0.10, "low"),
+            EvaluationScore("scene_continuity", 0.05, "low"),
+        ),
+    )
+
+    proposals = report.refinement_proposals(minimum_score=0.15, max_proposals=2)
+
+    assert len(proposals) == 2
+    assert [proposal.target for proposal in proposals] == ["scene_boundary", "narration"]
+    assert proposals[0].priority == 1
+    assert "0.050" in proposals[0].reason
