@@ -19,7 +19,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 |---|---|---|
 | 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED; macOS memory probing hardened |
 | 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
-| 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED |
+| 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED; schema-constrained generation hardened |
 | 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
 | 4 | Local macOS TTS | IMPLEMENTED |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
@@ -35,7 +35,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job/UI-polling tests added |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job/UI-polling/structured-output tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
 | 21 | M4 resource/performance optimization | PLANNED; depends on measurements |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Active media jobs are now polled through a single 3-second status loop, while the jobs list is refreshed only when entering the detail view, explicitly starting a job, or when the job reaches a terminal state.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts, instead of requesting generic JSON and relying entirely on post-generation validation.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -75,7 +75,7 @@ Remaining work includes filesystem/symlink audit, prompt/manifest validation, su
 
 ## Phase 18 — Testing and CI/CD
 
-Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, demand-driven media-job image-provider initialization, and browser dashboard polling regression. The dashboard regression prevents `pollJob()` from calling `refreshJobs()` on every tick, which previously multiplied polling loops and produced excessive repeated `/api/jobs` and `/api/projects/.../jobs` requests. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
+Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, demand-driven media-job image-provider initialization, browser dashboard polling regression, and schema-constrained Director generation/repair. The dashboard regression prevents `pollJob()` from calling `refreshJobs()` on every tick, which previously multiplied polling loops and produced excessive repeated `/api/jobs` and `/api/projects/.../jobs` requests. Structured-output tests verify that the provider receives the exact Pydantic schema on both initial and repair calls. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
 
 ## Phases 15–16, 19–24
 
