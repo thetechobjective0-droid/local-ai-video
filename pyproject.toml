@@ -54,6 +54,10 @@ strict = true
 module = ["torch", "diffusers", "diffusers.*", "yaml"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+module = ["app.cli"]
+disable_error_code = ["call-overload"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
