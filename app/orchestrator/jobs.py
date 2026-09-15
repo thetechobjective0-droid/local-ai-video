@@ -21,6 +21,7 @@ from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
 from app.models.artifact import Artifact
 from app.models.scene import Scene
+from app.orchestrator.cancellation import CancellationRegistry, JobCancellationRequested
 from app.orchestrator.checkpoint_runtime import CheckpointRuntime
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
@@ -42,7 +43,7 @@ class MediaJob(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: UUID
     project_id: UUID
-    state: str = Field(pattern="^(queued|running|completed|failed|interrupted)$")
+    state: str = Field(pattern="^(queued|running|completed|failed|interrupted|cancelled)$")
     created_at: datetime
     updated_at: datetime
     started_at: datetime | None = None
@@ -151,6 +152,7 @@ class MediaJobManager:
         )
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
+        self._cancellation = CancellationRegistry()
         logger.info(
             "[media] manager initialized worker_count=%s storage=%s",
             max_workers,
@@ -236,30 +238,48 @@ class MediaJobManager:
             scene_count=len(scenes),
         )
         self._save(job)
-        logger.info(
-            "[media] submitted job=%s project=%s scene_count=%s state=queued",
-            job.id,
-            project_id,
-            len(scenes),
-        )
+        self._cancellation.register(job.id)
         future = self._executor.submit(self._run, job.id)
         with self._lock:
             self._futures[job.id] = future
         return job
 
     def resume(self, job_id: UUID) -> MediaJob:
-        """Resume an interrupted job using its durable stage checkpoints."""
+        """Resume an interrupted, failed, or cancelled job using checkpoints."""
         job = self.get(job_id)
-        if job.state not in {"interrupted", "failed"}:
+        if job.state not in {"interrupted", "failed", "cancelled"}:
             raise ValueError(f"job {job_id} is not resumable from state {job.state}")
         resumed = self._update(job_id, state="queued", error=None, completed_at=None)
+        self._cancellation.register(job_id)
         with self._lock:
             future = self._futures.get(job_id)
             if future is not None and not future.done():
                 raise ValueError(f"job {job_id} is already running")
             self._futures[job_id] = self._executor.submit(self._run, job_id)
-        logger.info("[media] resumed job=%s project=%s", job_id, resumed.project_id)
         return resumed
+
+    def cancel(self, job_id: UUID) -> MediaJob:
+        """Request cooperative cancellation and persist the terminal job state when safe."""
+        job = self.get(job_id)
+        if job.state in {"completed", "failed", "interrupted", "cancelled"}:
+            return job
+        self._cancellation.register(job_id)
+        self._cancellation.cancel(job_id)
+        if job.state == "queued":
+            return self._update(
+                job_id,
+                state="cancelled",
+                error="cancellation requested",
+                completed_at=datetime.now(timezone.utc),
+            )
+        return self._update(job_id, error="cancellation requested")
+
+    def shutdown(self, *, wait: bool = True) -> None:
+        """Request cancellation for active jobs and shut down local workers."""
+        for job in self.list():
+            if job.state in {"queued", "running"}:
+                self.cancel(job.id)
+        self._executor.shutdown(wait=wait, cancel_futures=True)
 
     def _load_scenes(self, project_id: UUID) -> List[Scene]:
         scenes: List[Scene] = []
@@ -270,7 +290,6 @@ class MediaJobManager:
                 scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
             except (OSError, ValueError):
                 logger.warning("[media] skipping invalid scene file=%s", path.name)
-        logger.info("[media] loaded scenes project=%s count=%s", project_id, len(scenes))
         if not scenes:
             raise ValueError(f"no scenes found: {project_id}")
         return scenes
@@ -278,13 +297,6 @@ class MediaJobManager:
     def _update(self, job_id: UUID, **changes: object) -> MediaJob:
         current = self.get(job_id)
         updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
-        logger.info(
-            "[media] job=%s state=%s progress=%s/%s",
-            job_id,
-            updated.state,
-            updated.completed_scenes,
-            updated.scene_count,
-        )
         return self._save(updated)
 
     def _run(self, job_id: UUID) -> None:
@@ -295,22 +307,16 @@ class MediaJobManager:
             error=None,
         )
         runtime = CheckpointRuntime(self.store.root, job.project_id, job.id)
-        logger.info("[media] worker START job=%s project=%s", job.id, job.project_id)
+        runtime.emit("job_started", state="running")
         try:
-            logger.info("[media] loading configuration job=%s", job_id)
+            self._cancellation.check(job_id)
             config = load_config(None)
             scenes = self._load_scenes(job.project_id)
-            logger.info(
-                "[media] config image=%s video=%s device=%s",
-                config.image.model_path,
-                config.video.provider,
-                config.image.device,
-            )
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
 
+            self._cancellation.check(job_id)
             if runtime.should_skip("audio"):
-                logger.info("[media] checkpoint SKIP stage=audio job=%s", job_id)
                 scenes = self._load_scenes(job.project_id)
             else:
                 runtime.begin("audio", 10, metadata={"scene_count": len(scenes)})
@@ -324,27 +330,20 @@ class MediaJobManager:
                     ),
                 )
 
+            self._cancellation.check(job_id)
             if runtime.should_skip("media"):
-                logger.info("[media] checkpoint SKIP stage=media job=%s", job_id)
                 scenes = self._load_scenes(job.project_id)
                 self._update(job_id, completed_scenes=len(scenes), scene_count=len(scenes))
             else:
                 runtime.begin("media", 20, dependencies=("audio",))
-                logger.info("[media] initializing video provider=%s", config.video.provider)
                 video_provider = build_video_provider(config)
                 image_provider = _build_image_provider_if_needed(config, scenes)
                 capability = get_provider_capabilities(config.video.provider).video
 
                 def progress(completed: int, total: int) -> None:
-                    logger.info(
-                        "[media] progress job=%s completed=%s total=%s",
-                        job_id,
-                        completed,
-                        total,
-                    )
+                    self._cancellation.check(job_id)
                     self._update(job_id, completed_scenes=completed, scene_count=total)
 
-                logger.info("[media] generation START job=%s", job_id)
                 generate_project_media(
                     self.store,
                     job.project_id,
@@ -366,17 +365,13 @@ class MediaJobManager:
                 scenes = self._load_scenes(job.project_id)
                 runtime.complete(
                     "media",
-                    artifacts=tuple(
-                        f"scene-{scene.index:04d}.json" for scene in scenes
-                    ),
+                    artifacts=tuple(f"scene-{scene.index:04d}.json" for scene in scenes),
                     metadata={"scene_count": len(scenes)},
                 )
 
-            if runtime.should_skip("finalize"):
-                logger.info("[media] checkpoint SKIP stage=finalize job=%s", job_id)
-            else:
+            self._cancellation.check(job_id)
+            if not runtime.should_skip("finalize"):
                 runtime.begin("finalize", 30, dependencies=("audio", "media"))
-                logger.info("[media] finalization START job=%s", job_id)
                 _finalize_project_media(self.store, job.project_id)
                 runtime.complete(
                     "finalize",
@@ -388,19 +383,31 @@ class MediaJobManager:
                 state="completed",
                 completed_scenes=job.scene_count,
                 completed_at=datetime.now(timezone.utc),
+                error=None,
             )
+            runtime.emit("job_completed", state="completed")
             logger.info("[media] worker COMPLETE job=%s project=%s", final_job.id, final_job.project_id)
+        except JobCancellationRequested as exc:
+            cancelled = self._update(
+                job_id,
+                state="cancelled",
+                error=str(exc),
+                completed_at=datetime.now(timezone.utc),
+            )
+            runtime.emit("job_cancelled", state="cancelled", details={"error": cancelled.error})
         except Exception as exc:
-            logger.exception(
-                "[media] worker FAILED job=%s project=%s error=%s", job.id, job.project_id, exc
-            )
+            logger.exception("[media] worker FAILED job=%s error=%s", job.id, exc)
             self._update(
-                job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc)
+                job_id,
+                state="failed",
+                error=str(exc),
+                completed_at=datetime.now(timezone.utc),
             )
+            runtime.emit("job_failed", state="failed", details={"error": str(exc)})
         finally:
             with self._lock:
                 self._futures.pop(job_id, None)
-            logger.info("[media] worker EXIT job=%s", job_id)
+            self._cancellation.discard(job_id)
 
 
 _manager: MediaJobManager | None = None
