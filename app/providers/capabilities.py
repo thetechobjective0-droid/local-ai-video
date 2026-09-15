@@ -35,6 +35,17 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapabilities] = {
             strict_image_to_video=True,
         ),
     ),
+    "ltx2_mlx": ProviderCapabilities(
+        name="ltx2_mlx",
+        video=VideoCapability(
+            image_motion=False,
+            image_to_video=True,
+            text_to_video=True,
+            max_duration_seconds=10,
+            memory_class="high",
+            strict_image_to_video=True,
+        ),
+    ),
 }
 
 
