@@ -31,7 +31,9 @@ class FilesystemStore:
         """Resolve a path beneath root, rejecting traversal and symlink escapes."""
         root = root.expanduser().resolve()
         candidate = path.expanduser()
-        resolved = (root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+        resolved = (
+            (root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+        )
         if resolved != root and root not in resolved.parents:
             raise ValueError(f"path escapes root: {path}")
         if must_exist and not resolved.is_file():
@@ -79,3 +81,4 @@ class FilesystemStore:
         """Load and validate project metadata from disk."""
         path = self.project_path(project_id, Path("project.json"), must_exist=True)
         return VideoProject.model_validate_json(path.read_text(encoding="utf-8"))
+
