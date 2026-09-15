@@ -35,7 +35,12 @@ def _memory_bytes() -> tuple[int, int]:
     if shutil.which("sysctl"):
         try:
             total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip())
-            free_pages = int(subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True).split("free =", 1)[1].split("M", 1)[0].strip())
+            free_pages = int(
+                subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True)
+                .split("free =", 1)[1]
+                .split("M", 1)[0]
+                .strip()
+            )
             available = max(0, int(free_pages * 1024 * 1024))
             return total, available
         except (OSError, ValueError, IndexError, subprocess.CalledProcessError):
