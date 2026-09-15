@@ -36,7 +36,7 @@ class LTXVideoProvider:
             raise ProviderUnavailableError(f"LTX model directory does not exist: {self.model_path}")
         try:
             import torch
-            from diffusers import DiffusionPipeline
+            from diffusers import LTXImageToVideoPipeline
         except ImportError as exc:
             raise ProviderUnavailableError(
                 "LTX video dependencies are unavailable; install the image/video dependencies"
@@ -46,7 +46,7 @@ class LTXVideoProvider:
         if dtype is None:
             raise ValueError(f"unsupported torch dtype: {self.dtype}")
         try:
-            pipeline = DiffusionPipeline.from_pretrained(
+            pipeline = LTXImageToVideoPipeline.from_pretrained(
                 self.model_path,
                 torch_dtype=dtype,
                 local_files_only=True,
@@ -91,6 +91,22 @@ class LTXVideoProvider:
         frames = ((frames - 1) // 8) * 8 + 1
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         pipeline = self._load_pipeline()
+        metadata = request.metadata
+        inference_steps = int(str(metadata.get("inference_steps", 40)))
+        guidance_scale = float(str(metadata.get("guidance_scale", 3.0)))
+        guidance_rescale = float(str(metadata.get("guidance_rescale", 0.0)))
+        image_cond_noise_scale = float(str(metadata.get("image_cond_noise_scale", 0.025)))
+        decode_timestep = float(str(metadata.get("decode_timestep", 0.05)))
+        decode_noise_scale = metadata.get("decode_noise_scale", 0.025)
+        prompt = request.prompt.strip()
+        negative_prompt = request.negative_prompt.strip() or (
+            "worst quality, low quality, blurry, jittery, flicker, inconsistent motion, "
+            "warping, morphing, duplicate subjects, deformed anatomy, unstable geometry, "
+            "camera shake, abrupt zoom, text, watermark"
+        )
+        if not prompt:
+            prompt = "Smooth cinematic natural motion, preserve the subject identity and composition."
+
         try:
             from diffusers.utils import export_to_video, load_image
             import torch
@@ -98,19 +114,58 @@ class LTXVideoProvider:
             generator = None
             if request.seed is not None:
                 generator = torch.Generator(device="cpu").manual_seed(request.seed)
+            call_kwargs: dict[str, object] = {
+                "image": load_image(str(request.image_path)),
+                "prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "width": int(str(metadata.get("width", 704))),
+                "height": int(str(metadata.get("height", 480))),
+                "num_frames": frames,
+                "frame_rate": request.fps,
+                "num_inference_steps": inference_steps,
+                "guidance_scale": guidance_scale,
+                "guidance_rescale": guidance_rescale,
+                "image_cond_noise_scale": image_cond_noise_scale,
+                "generator": generator,
+            }
+            if decode_timestep > 0:
+                call_kwargs["decode_timestep"] = decode_timestep
+            if decode_noise_scale is not None:
+                call_kwargs["decode_noise_scale"] = float(str(decode_noise_scale))
             with torch.inference_mode():
-                image = load_image(str(request.image_path))
-                result = pipeline(
-                    image=image,
-                    prompt=request.prompt,
-                    width=request.metadata.get("width", 704),
-                    height=request.metadata.get("height", 384),
-                    num_frames=frames,
-                    generator=generator,
-                )
+                result = pipeline(**call_kwargs)
                 frames_output = result.frames[0]
                 export_to_video(frames_output, str(request.output_path), fps=request.fps)
-                del frames_output, result, image, generator
+                del frames_output, result, call_kwargs, generator
+        except TypeError:
+            # Older local Diffusers releases may not expose the newer optional LTX kwargs.
+            try:
+                import torch
+                from diffusers.utils import export_to_video, load_image
+
+                generator = (
+                    torch.Generator(device="cpu").manual_seed(request.seed)
+                    if request.seed is not None
+                    else None
+                )
+                with torch.inference_mode():
+                    result = pipeline(
+                        image=load_image(str(request.image_path)),
+                        prompt=prompt,
+                        negative_prompt=negative_prompt,
+                        width=int(str(metadata.get("width", 704))),
+                        height=int(str(metadata.get("height", 480))),
+                        num_frames=frames,
+                        frame_rate=request.fps,
+                        num_inference_steps=inference_steps,
+                        guidance_scale=guidance_scale,
+                        generator=generator,
+                    )
+                    frames_output = result.frames[0]
+                    export_to_video(frames_output, str(request.output_path), fps=request.fps)
+                    del frames_output, result, generator
+            except Exception as exc:
+                raise VideoAgentError("LTX image-to-video generation failed") from exc
         except (OSError, RuntimeError, ValueError) as exc:
             raise VideoAgentError("LTX image-to-video generation failed") from exc
         except Exception as exc:
@@ -121,8 +176,8 @@ class LTXVideoProvider:
         if not request.output_path.is_file() or request.output_path.stat().st_size == 0:
             raise VideoAgentError("LTX returned no usable video file")
         digest = hashlib.sha256(request.output_path.read_bytes()).hexdigest()
-        width = int(str(request.metadata.get("width", 704)))
-        height = int(str(request.metadata.get("height", 384)))
+        width = int(str(metadata.get("width", 704)))
+        height = int(str(metadata.get("height", 480)))
         duration = frames / request.fps
         return VideoResult(
             path=request.output_path,
@@ -134,8 +189,16 @@ class LTXVideoProvider:
             height=height,
             sha256=digest,
             metadata={
-                **request.metadata,
+                **metadata,
                 "num_frames": frames,
+                "effective_prompt": prompt,
+                "negative_prompt": negative_prompt,
+                "inference_steps": inference_steps,
+                "guidance_scale": guidance_scale,
+                "guidance_rescale": guidance_rescale,
+                "image_cond_noise_scale": image_cond_noise_scale,
+                "decode_timestep": decode_timestep,
+                "decode_noise_scale": decode_noise_scale,
                 "device": self.device,
                 "dtype": self.dtype,
             },
