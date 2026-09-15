@@ -1,6 +1,7 @@
 """Application configuration with safe local-only defaults."""
 
 from pathlib import Path
+from typing import Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,7 +51,7 @@ class VideoConfig(BaseModel):
     model_path: Path | None = Path("./data/models/LTX-Video")
     engine_path: Path = Path("./data/runtime/ltx-video-mlx")
     uv_command: str = "uv"
-    bits: int = Field(default=8, pattern="^[48]$")
+    bits: Literal[4, 8] = 8
     native_audio: bool = True
     i2v_strength: float = Field(default=0.95, ge=0, le=1)
     allow_fallback: bool = False
