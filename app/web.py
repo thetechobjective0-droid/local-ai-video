@@ -1,11 +1,11 @@
 """Local-only HTTP API for the video generation application."""
 
 import json
+import logging
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 from uuid import UUID
-import logging
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Response
@@ -18,6 +18,7 @@ from app.exceptions import ProviderUnavailableError
 from app.generation.audio import generate_scene_audio
 from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
+from app.job_api import router as job_router
 from app.logging import configure_logging
 from app.models.artifact import Artifact
 from app.models.scene import Scene
@@ -29,7 +30,6 @@ from app.qa.project import validate_project
 from app.qa.report import write_qa_report
 from app.storage.filesystem import FilesystemStore
 from app.web_ui import HTML
-from app.job_api import router as job_router
 
 app = FastAPI(title="Local AI Video", version="0.1.0")
 app.include_router(job_router)
@@ -92,7 +92,11 @@ def _artifact_manifest(
         raise HTTPException(status_code=422, detail="artifact manifest is invalid") from None
     if artifact.project_id != project_id:
         raise HTTPException(status_code=422, detail="artifact manifest belongs to another project")
-    expected_type = {"image": "scene_image", "audio": "scene_audio", "video": "scene_video"}[suffix]
+    expected_type = {
+        "image": "scene_image",
+        "audio": "scene_audio",
+        "video": "scene_video",
+    }[suffix]
     if artifact.type != expected_type:
         raise HTTPException(status_code=422, detail="artifact manifest has an invalid type")
     try:
@@ -228,7 +232,9 @@ def timeline(project_id: UUID) -> dict[str, Any]:
 def subtitles(project_id: UUID, format: str) -> FileResponse:
     if format not in {"srt", "vtt"}:
         raise HTTPException(status_code=404, detail="unsupported subtitle format")
-    path = store_path = _store().project_path(project_id, Path(f"subtitles.{format}"), must_exist=True)
+    path = store_path = _store().project_path(
+        project_id, Path(f"subtitles.{format}"), must_exist=True
+    )
     logger.info("[web] subtitle available project=%s format=%s", project_id, format)
     media_type = "text/vtt" if format == "vtt" else "application/x-subrip"
     return FileResponse(path, media_type=media_type, filename=store_path.name)
