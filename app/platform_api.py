@@ -72,15 +72,23 @@ def create_experiment(request: ExperimentRequest) -> dict[str, object]:
 
 
 @router.put("/api/platform/experiments/{experiment_id}")
-def complete_experiment(experiment_id: UUID, status: str = "completed", measurements: dict[str, float] | None = None, notes: str = "") -> dict[str, object]:
+def complete_experiment(
+    experiment_id: UUID,
+    status: str = "completed",
+    measurements: dict[str, float] | None = None,
+    notes: str = "",
+) -> dict[str, object]:
     if status not in {"planned", "completed", "failed"}:
         raise HTTPException(status_code=422, detail="invalid experiment status")
     store = _store()
     try:
         payload = read_experiment(store.root, experiment_id)
+        raw_manifest = payload["manifest"]
+        if not isinstance(raw_manifest, dict):
+            raise ValueError("invalid experiment manifest")
     except (OSError, ValueError, KeyError):
         raise HTTPException(status_code=404, detail="experiment not found") from None
-    manifest = ExperimentManifest.model_validate(payload["manifest"])
+    manifest = ExperimentManifest.model_validate(raw_manifest)
     result = ExperimentResult(experiment_id=experiment_id, status=status, measurements=measurements or {}, notes=notes)
     path = write_experiment(store.root, manifest, result)
     return {"experiment_id": str(experiment_id), "result": result.model_dump(mode="json"), "path": str(path)}
