@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   quality:
@@ -22,15 +22,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Install dependencies
         run: uv sync --extra dev
-      - name: Format sources
-        run: uv run ruff format .
-      - name: Commit formatted sources
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add '*.py'
-          git diff --cached --quiet || git commit -m "chore: format Python sources"
-          git push || true
       - name: Format check
         run: uv run ruff format --check .
       - name: Lint
