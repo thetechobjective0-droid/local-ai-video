@@ -21,6 +21,7 @@ from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
 from app.models.artifact import Artifact
 from app.models.scene import Scene
+from app.orchestrator.checkpoint_runtime import CheckpointRuntime
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
@@ -246,6 +247,20 @@ class MediaJobManager:
             self._futures[job.id] = future
         return job
 
+    def resume(self, job_id: UUID) -> MediaJob:
+        """Resume an interrupted job using its durable stage checkpoints."""
+        job = self.get(job_id)
+        if job.state not in {"interrupted", "failed"}:
+            raise ValueError(f"job {job_id} is not resumable from state {job.state}")
+        resumed = self._update(job_id, state="queued", error=None, completed_at=None)
+        with self._lock:
+            future = self._futures.get(job_id)
+            if future is not None and not future.done():
+                raise ValueError(f"job {job_id} is already running")
+            self._futures[job_id] = self._executor.submit(self._run, job_id)
+        logger.info("[media] resumed job=%s project=%s", job_id, resumed.project_id)
+        return resumed
+
     def _load_scenes(self, project_id: UUID) -> List[Scene]:
         scenes: List[Scene] = []
         for path in sorted(self.store.project_dir(project_id).glob("scene-*.json")):
@@ -279,6 +294,7 @@ class MediaJobManager:
             started_at=datetime.now(timezone.utc),
             error=None,
         )
+        runtime = CheckpointRuntime(self.store.root, job.project_id, job.id)
         logger.info("[media] worker START job=%s project=%s", job.id, job.project_id)
         try:
             logger.info("[media] loading configuration job=%s", job_id)
@@ -292,50 +308,88 @@ class MediaJobManager:
             )
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
-            scenes = _ensure_project_audio(self.store, job.project_id, scenes, config)
-            logger.info("[media] initializing video provider=%s", config.video.provider)
-            video_provider = build_video_provider(config)
-            image_provider = _build_image_provider_if_needed(config, scenes)
-            capability = get_provider_capabilities(config.video.provider).video
-            logger.info("[media] provider capability=%s", capability)
 
-            def progress(completed: int, total: int) -> None:
-                logger.info(
-                    "[media] progress job=%s completed=%s total=%s",
-                    job_id,
-                    completed,
-                    total,
+            if runtime.should_skip("audio"):
+                logger.info("[media] checkpoint SKIP stage=audio job=%s", job_id)
+                scenes = self._load_scenes(job.project_id)
+            else:
+                runtime.begin("audio", 10, metadata={"scene_count": len(scenes)})
+                scenes = _ensure_project_audio(self.store, job.project_id, scenes, config)
+                runtime.complete(
+                    "audio",
+                    artifacts=tuple(
+                        f"scene-{scene.index:04d}-audio.json"
+                        for scene in scenes
+                        if scene.audio_asset is not None
+                    ),
                 )
-                self._update(job_id, completed_scenes=completed, scene_count=total)
 
-            logger.info("[media] generation START job=%s", job_id)
-            generate_project_media(
-                self.store,
-                job.project_id,
-                scenes,
-                video_provider=video_provider,
-                image_provider=image_provider,
-                image_model=config.image.model_path.name,
-                image_width=config.image.width,
-                image_height=config.image.height,
-                image_steps=config.image.steps,
-                image_guidance_scale=config.image.guidance_scale,
-                video_capability=capability,
-                fallback_provider=build_video_fallback(config),
-                width=config.video.width,
-                height=config.video.height,
-                fps=config.video.fps,
-                progress_callback=progress,
-            )
-            logger.info("[media] finalization START job=%s", job_id)
-            _finalize_project_media(self.store, job.project_id)
-            self._update(
+            if runtime.should_skip("media"):
+                logger.info("[media] checkpoint SKIP stage=media job=%s", job_id)
+                scenes = self._load_scenes(job.project_id)
+                self._update(job_id, completed_scenes=len(scenes), scene_count=len(scenes))
+            else:
+                runtime.begin("media", 20, dependencies=("audio",))
+                logger.info("[media] initializing video provider=%s", config.video.provider)
+                video_provider = build_video_provider(config)
+                image_provider = _build_image_provider_if_needed(config, scenes)
+                capability = get_provider_capabilities(config.video.provider).video
+
+                def progress(completed: int, total: int) -> None:
+                    logger.info(
+                        "[media] progress job=%s completed=%s total=%s",
+                        job_id,
+                        completed,
+                        total,
+                    )
+                    self._update(job_id, completed_scenes=completed, scene_count=total)
+
+                logger.info("[media] generation START job=%s", job_id)
+                generate_project_media(
+                    self.store,
+                    job.project_id,
+                    scenes,
+                    video_provider=video_provider,
+                    image_provider=image_provider,
+                    image_model=config.image.model_path.name,
+                    image_width=config.image.width,
+                    image_height=config.image.height,
+                    image_steps=config.image.steps,
+                    image_guidance_scale=config.image.guidance_scale,
+                    video_capability=capability,
+                    fallback_provider=build_video_fallback(config),
+                    width=config.video.width,
+                    height=config.video.height,
+                    fps=config.video.fps,
+                    progress_callback=progress,
+                )
+                scenes = self._load_scenes(job.project_id)
+                runtime.complete(
+                    "media",
+                    artifacts=tuple(
+                        f"scene-{scene.index:04d}.json" for scene in scenes
+                    ),
+                    metadata={"scene_count": len(scenes)},
+                )
+
+            if runtime.should_skip("finalize"):
+                logger.info("[media] checkpoint SKIP stage=finalize job=%s", job_id)
+            else:
+                runtime.begin("finalize", 30, dependencies=("audio", "media"))
+                logger.info("[media] finalization START job=%s", job_id)
+                _finalize_project_media(self.store, job.project_id)
+                runtime.complete(
+                    "finalize",
+                    artifacts=("timeline.json", "subtitles.srt", "final.mp4", "qa-report.json"),
+                )
+
+            final_job = self._update(
                 job_id,
                 state="completed",
                 completed_scenes=job.scene_count,
                 completed_at=datetime.now(timezone.utc),
             )
-            logger.info("[media] worker COMPLETE job=%s project=%s", job.id, job.project_id)
+            logger.info("[media] worker COMPLETE job=%s project=%s", final_job.id, final_job.project_id)
         except Exception as exc:
             logger.exception(
                 "[media] worker FAILED job=%s project=%s error=%s", job.id, job.project_id, exc
@@ -346,7 +400,7 @@ class MediaJobManager:
         finally:
             with self._lock:
                 self._futures.pop(job_id, None)
-            logger.info("[media] worker EXIT job=%s", job.id)
+            logger.info("[media] worker EXIT job=%s", job_id)
 
 
 _manager: MediaJobManager | None = None
