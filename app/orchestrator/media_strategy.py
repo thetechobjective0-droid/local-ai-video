@@ -14,6 +14,7 @@ class VideoCapability:
     text_to_video: bool = False
     max_duration_seconds: float = 0.0
     memory_class: str = "low"
+    strict_image_to_video: bool = False
 
 
 def select_media_type(
@@ -26,8 +27,8 @@ def select_media_type(
 
     When the configured provider can perform real image-to-video generation,
     that capability takes precedence over storyboard defaults such as static
-    image or Ken-Burns motion. Static image motion remains available only when
-    the provider cannot perform I2V or the I2V resource gate rejects the clip.
+    image or Ken-Burns motion. Strict I2V providers never silently degrade to
+    static media when duration or memory constraints make I2V unavailable.
     """
     candidates: list[MediaType] = []
     if video.image_to_video:
@@ -39,6 +40,15 @@ def select_media_type(
         candidates.append(MediaType.IMAGE_MOTION)
     if MediaType.STATIC_IMAGE not in candidates:
         candidates.append(MediaType.STATIC_IMAGE)
+
+    if video.image_to_video and video.strict_image_to_video:
+        if scene.duration_seconds > video.max_duration_seconds:
+            raise ValueError(
+                f"scene duration {scene.duration_seconds:.2f}s exceeds strict I2V limit "
+                f"{video.max_duration_seconds:.2f}s"
+            )
+        if not _video_memory_allowed(video, available_memory_gb):
+            raise ValueError("strict I2V provider is blocked by the available-memory gate")
 
     for candidate in candidates:
         if candidate is MediaType.TEXT_TO_VIDEO and video.text_to_video:

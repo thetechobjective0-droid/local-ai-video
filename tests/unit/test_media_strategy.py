@@ -1,5 +1,7 @@
 """Tests for deterministic scene media routing."""
 
+import pytest
+
 from app.models.scene import MediaType, Scene
 from app.orchestrator.media_strategy import VideoCapability, select_media_type
 
@@ -49,6 +51,25 @@ def test_falls_back_when_video_duration_is_unsupported() -> None:
     assert selected is MediaType.IMAGE_MOTION
 
 
+def test_strict_i2v_rejects_unsupported_duration() -> None:
+    scene = Scene(
+        index=1,
+        start_seconds=0,
+        duration_seconds=8,
+        preferred_media_type=MediaType.STATIC_IMAGE,
+        fallback_media_type=MediaType.IMAGE_MOTION,
+    )
+    with pytest.raises(ValueError, match="exceeds strict I2V limit"):
+        select_media_type(
+            scene,
+            video=VideoCapability(
+                image_to_video=True,
+                max_duration_seconds=5,
+                strict_image_to_video=True,
+            ),
+        )
+
+
 def test_memory_gate_falls_back_to_static_motion() -> None:
     scene = Scene(
         index=1,
@@ -67,6 +88,27 @@ def test_memory_gate_falls_back_to_static_motion() -> None:
         available_memory_gb=4,
     )
     assert selected is MediaType.STATIC_IMAGE
+
+
+def test_strict_i2v_rejects_memory_gate() -> None:
+    scene = Scene(
+        index=1,
+        start_seconds=0,
+        duration_seconds=4,
+        preferred_media_type=MediaType.STATIC_IMAGE,
+        fallback_media_type=MediaType.IMAGE_MOTION,
+    )
+    with pytest.raises(ValueError, match="blocked by the available-memory gate"):
+        select_media_type(
+            scene,
+            video=VideoCapability(
+                image_to_video=True,
+                max_duration_seconds=5,
+                memory_class="high",
+                strict_image_to_video=True,
+            ),
+            available_memory_gb=4,
+        )
 
 
 def test_text_to_video_is_used_only_when_supported() -> None:

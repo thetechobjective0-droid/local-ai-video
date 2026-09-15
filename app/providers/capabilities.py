@@ -32,13 +32,14 @@ _PROVIDER_CAPABILITIES: dict[str, ProviderCapabilities] = {
             text_to_video=False,
             max_duration_seconds=20,
             memory_class="high",
+            strict_image_to_video=True,
         ),
     ),
 }
 
 
 def get_provider_capabilities(provider_name: str) -> ProviderCapabilities:
-    """Return capabilities for a supported local provider."""
+    """Return capabilities for a supported local video provider."""
     try:
         return _PROVIDER_CAPABILITIES[provider_name]
     except KeyError as exc:
