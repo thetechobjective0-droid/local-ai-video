@@ -41,6 +41,18 @@ class MediaJob(BaseModel):
     completed_scenes: int = 0
 
 
+def _build_image_provider_if_needed(config, scenes: List[Scene]):
+    """Construct Diffusers only when a scene still needs an image asset."""
+    if not any(scene.image_asset is None for scene in scenes):
+        logger.info("[media] all scenes already have image assets; image provider not required")
+        return None
+    logger.info(
+        "[media] initializing image provider model=%s because image assets are missing",
+        config.image.model_path,
+    )
+    return DiffusersImageProvider(config.image.model_path, device=config.image.device)
+
+
 class MediaJobManager:
     """Small in-process worker pool backed by atomic JSON job manifests."""
 
@@ -184,21 +196,7 @@ class MediaJobManager:
                 raise ValueError("local_only must remain enabled")
             logger.info("[media] initializing video provider=%s", config.video.provider)
             video_provider = build_video_provider(config)
-
-            # Diffusers is only required when at least one scene still needs an image.
-            # Existing persisted scene images must be sufficient for media-only jobs.
-            image_provider = None
-            if any(scene.image_asset is None for scene in scenes):
-                logger.info(
-                    "[media] initializing image provider model=%s because image assets are missing",
-                    config.image.model_path,
-                )
-                image_provider = DiffusersImageProvider(
-                    config.image.model_path, device=config.image.device
-                )
-            else:
-                logger.info("[media] all scenes already have image assets; image provider not required")
-
+            image_provider = _build_image_provider_if_needed(config, scenes)
             capability = get_provider_capabilities(config.video.provider).video
             logger.info("[media] provider capability=%s", capability)
 
@@ -244,7 +242,7 @@ class MediaJobManager:
         finally:
             with self._lock:
                 self._futures.pop(job_id, None)
-            logger.info("[media] worker EXIT job=%s", job_id)
+            logger.info("[media] worker EXIT job=%s", job.id)
 
 
 _manager: MediaJobManager | None = None
