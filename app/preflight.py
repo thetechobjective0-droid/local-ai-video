@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 import os
 from pathlib import Path
+import platform
 import shutil
 import subprocess
 
@@ -24,34 +25,63 @@ def _sysconf_memory(name: str) -> int | None:
         return None
 
 
+def _memory_bytes_macos() -> tuple[int, int]:
+    """Return total and available physical memory on macOS."""
+    total = int(
+        subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip()
+    )
+
+    vm_stat = subprocess.check_output(["vm_stat"], text=True)
+    page_size = 4096
+    stats: dict[str, int] = {}
+
+    for line in vm_stat.splitlines():
+        if line.startswith("page size of"):
+            page_size = int(line.split()[-2])
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        value = value.strip().rstrip(".")
+        try:
+            stats[key] = int(value)
+        except ValueError:
+            continue
+
+    available_pages = (
+        stats.get("Pages free", 0)
+        + stats.get("Pages inactive", 0)
+        + stats.get("Pages speculative", 0)
+    )
+    available = max(0, available_pages * page_size)
+    return total, available
+
+
 def _memory_bytes() -> tuple[int, int]:
     """Return total and available physical memory across supported platforms."""
+    if platform.system() == "Darwin":
+        try:
+            return _memory_bytes_macos()
+        except (OSError, ValueError, subprocess.CalledProcessError):
+            pass
+
     page_size = _sysconf_memory("SC_PAGE_SIZE")
     physical_pages = _sysconf_memory("SC_PHYS_PAGES")
     available_pages = _sysconf_memory("SC_AVPHYS_PAGES")
     if page_size and physical_pages and available_pages:
         return page_size * physical_pages, page_size * available_pages
 
+    if hasattr(os, "getloadavg") and page_size and physical_pages:
+        total = page_size * physical_pages
+        return total, total
+
     if shutil.which("sysctl"):
         try:
             total = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip())
-            free_pages = int(
-                subprocess.check_output(["sysctl", "-n", "vm.swapusage"], text=True)
-                .split("free =", 1)[1]
-                .split("M", 1)[0]
-                .strip()
-            )
-            available = max(0, int(free_pages * 1024 * 1024))
-            return total, available
-        except (OSError, ValueError, IndexError, subprocess.CalledProcessError):
+            return total, total
+        except (OSError, ValueError, subprocess.CalledProcessError):
             pass
 
-    if hasattr(os, "getloadavg"):
-        try:
-            total = int(os.sysconf("SC_PHYS_PAGES") * os.sysconf("SC_PAGE_SIZE"))
-            return total, total
-        except (ValueError, OSError, AttributeError):
-            pass
     raise RuntimeError("unable to determine physical memory on this platform")
 
 
