@@ -21,7 +21,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
 | 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED; schema-constrained generation hardened |
 | 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE |
-| 4 | Local macOS TTS | IMPLEMENTED |
+| 4 | Local macOS TTS | IMPLEMENTED; integrated into media jobs with non-silent output validation |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
 | 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment hardened |
 | 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, and uses a dedicated final-video readiness endpoint instead of probing a missing `final.mp4` with `HEAD`. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
