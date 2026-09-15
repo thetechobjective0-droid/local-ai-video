@@ -398,6 +398,19 @@ def regenerate(project_id: UUID, scene_id: UUID, request: RegenerateRequest) -> 
     }
 
 
+@app.get("/api/projects/{project_id}/video/status")
+def final_video_status(project_id: UUID) -> dict[str, Any]:
+    """Return final-video readiness without using a noisy missing-file HEAD probe."""
+    path = _store().project_dir(project_id) / "final.mp4"
+    if not path.is_file():
+        return {"ready": False, "url": f"/api/projects/{project_id}/video"}
+    return {
+        "ready": True,
+        "url": f"/api/projects/{project_id}/video",
+        "size": path.stat().st_size,
+    }
+
+
 @app.head("/api/projects/{project_id}/video")
 def final_video_head(project_id: UUID) -> Response:
     path = _store().project_dir(project_id) / "final.mp4"
