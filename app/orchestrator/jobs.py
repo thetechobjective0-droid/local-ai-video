@@ -54,19 +54,12 @@ class MediaJob(BaseModel):
 
 
 def _build_image_provider_if_needed(config: AppConfig, scenes: List[Scene]) -> ImageProvider | None:
-    """Construct Diffusers only when a scene still needs an image asset."""
     if not any(scene.image_asset is None for scene in scenes):
-        logger.info("[media] all scenes already have image assets; image provider not required")
         return None
-    logger.info(
-        "[media] initializing image provider model=%s because image assets are missing",
-        config.image.model_path,
-    )
     return DiffusersImageProvider(config.image.model_path, device=config.image.device)
 
 
 def _audio_is_usable(store: FilesystemStore, project_id: UUID, scene: Scene) -> bool:
-    """Return true only when the persisted scene audio exists and contains signal."""
     if scene.audio_asset is None:
         return False
     directory = store.project_dir(project_id)
@@ -88,35 +81,27 @@ def _audio_is_usable(store: FilesystemStore, project_id: UUID, scene: Scene) -> 
         return False
 
 
-def _ensure_project_audio(
-    store: FilesystemStore, project_id: UUID, scenes: list[Scene], config: AppConfig
-) -> list[Scene]:
-    """Create or replace missing/silent scene narration before final rendering."""
+def _ensure_project_audio(store: FilesystemStore, project_id: UUID, scenes: list[Scene], config: AppConfig) -> list[Scene]:
     provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
     refreshed: list[Scene] = []
     for scene in sorted(scenes, key=lambda item: item.index):
         current = scene
         if current.narration.strip() and not _audio_is_usable(store, project_id, current):
-            logger.info(
-                "[media] scene=%s audio generation START provider=%s",
-                current.index,
-                provider.provider_name,
-            )
+            configured_voice = current.metadata.get("voice")
+            voice = configured_voice if isinstance(configured_voice, str) and configured_voice.strip() else config.tts.voice
             _, current = generate_scene_audio(
                 provider,
                 store,
                 project_id,
                 current,
-                voice=config.tts.voice,
+                voice=voice,
                 rate=config.tts.rate,
             )
-            logger.info("[media] scene=%s audio generation COMPLETE", current.index)
         refreshed.append(current)
     return refreshed
 
 
 def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
-    """Build timeline/subtitles, render final.mp4, and persist deterministic QA."""
     project = store.load_project(project_id)
     scenes: list[Scene] = []
     for path in sorted(store.project_dir(project_id).glob("scene-*.json")):
@@ -131,9 +116,7 @@ def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
     build_timeline(store, project, scenes)
     build_subtitles(store, project_id, scenes)
     from app.models.timeline import Timeline
-
-    timeline_path = store.project_dir(project_id) / "timeline.json"
-    timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
+    timeline = Timeline.model_validate_json((store.project_dir(project_id) / "timeline.json").read_text(encoding="utf-8"))
     FFmpegRenderer().render(store, project_id, timeline)
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
@@ -147,17 +130,10 @@ class MediaJobManager:
 
     def __init__(self, store: FilesystemStore, *, max_workers: int = 1) -> None:
         self.store = store
-        self._executor = ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="video-agent-job"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="video-agent-job")
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
         self._cancellation = CancellationRegistry()
-        logger.info(
-            "[media] manager initialized worker_count=%s storage=%s",
-            max_workers,
-            store.root,
-        )
         self._recover_stale_jobs()
 
     def _path(self, job_id: UUID) -> Path:
@@ -171,20 +147,13 @@ class MediaJobManager:
     def _save(self, job: MediaJob) -> MediaJob:
         path = self._path(job.id)
         payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w",
-            encoding="utf-8",
-            dir=path.parent,
-            prefix=".job-",
-            delete=False,
-        ) as temp:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False) as temp:
             temp.write(payload)
             temp_path = Path(temp.name)
         temp_path.replace(path)
         return job
 
     def _recover_stale_jobs(self) -> None:
-        """A new process cannot own old worker threads, so mark running jobs interrupted."""
         jobs_dir = self.store.root / "jobs"
         for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
             try:
@@ -192,20 +161,7 @@ class MediaJobManager:
             except (OSError, ValueError):
                 continue
             if job.state in {"queued", "running"}:
-                logger.warning(
-                    "[media] recovering stale job=%s previous_state=%s",
-                    job.id,
-                    job.state,
-                )
-                self._save(
-                    job.model_copy(
-                        update={
-                            "state": "interrupted",
-                            "updated_at": datetime.now(timezone.utc),
-                            "error": "worker process restarted",
-                        }
-                    )
-                )
+                self._save(job.model_copy(update={"state": "interrupted", "updated_at": datetime.now(timezone.utc), "error": "worker process restarted"}))
 
     def get(self, job_id: UUID) -> MediaJob:
         path = self._path(job_id)
@@ -226,17 +182,9 @@ class MediaJobManager:
         return sorted(result, key=lambda item: item.created_at, reverse=True)
 
     def submit(self, project_id: UUID) -> MediaJob:
-        logger.info("[media] submit START project=%s", project_id)
         scenes = self._load_scenes(project_id)
         now = datetime.now(timezone.utc)
-        job = MediaJob(
-            id=uuid4(),
-            project_id=project_id,
-            state="queued",
-            created_at=now,
-            updated_at=now,
-            scene_count=len(scenes),
-        )
+        job = MediaJob(id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now, scene_count=len(scenes))
         self._save(job)
         self._cancellation.register(job.id)
         future = self._executor.submit(self._run, job.id)
@@ -245,7 +193,6 @@ class MediaJobManager:
         return job
 
     def resume(self, job_id: UUID) -> MediaJob:
-        """Resume an interrupted, failed, or cancelled job using checkpoints."""
         job = self.get(job_id)
         if job.state not in {"interrupted", "failed", "cancelled"}:
             raise ValueError(f"job {job_id} is not resumable from state {job.state}")
@@ -259,23 +206,16 @@ class MediaJobManager:
         return resumed
 
     def cancel(self, job_id: UUID) -> MediaJob:
-        """Request cooperative cancellation and persist the terminal job state when safe."""
         job = self.get(job_id)
         if job.state in {"completed", "failed", "interrupted", "cancelled"}:
             return job
         self._cancellation.register(job_id)
         self._cancellation.cancel(job_id)
         if job.state == "queued":
-            return self._update(
-                job_id,
-                state="cancelled",
-                error="cancellation requested",
-                completed_at=datetime.now(timezone.utc),
-            )
+            return self._update(job_id, state="cancelled", error="cancellation requested", completed_at=datetime.now(timezone.utc))
         return self._update(job_id, error="cancellation requested")
 
     def shutdown(self, *, wait: bool = True) -> None:
-        """Request cancellation for active jobs and shut down local workers."""
         for job in self.list():
             if job.state in {"queued", "running"}:
                 self.cancel(job.id)
@@ -289,23 +229,17 @@ class MediaJobManager:
             try:
                 scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
             except (OSError, ValueError):
-                logger.warning("[media] skipping invalid scene file=%s", path.name)
+                continue
         if not scenes:
             raise ValueError(f"no scenes found: {project_id}")
         return scenes
 
     def _update(self, job_id: UUID, **changes: object) -> MediaJob:
         current = self.get(job_id)
-        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
-        return self._save(updated)
+        return self._save(current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)}))
 
     def _run(self, job_id: UUID) -> None:
-        job = self._update(
-            job_id,
-            state="running",
-            started_at=datetime.now(timezone.utc),
-            error=None,
-        )
+        job = self._update(job_id, state="running", started_at=datetime.now(timezone.utc), error=None)
         runtime = CheckpointRuntime(self.store.root, job.project_id, job.id)
         runtime.emit("job_started", state="running")
         try:
@@ -314,22 +248,13 @@ class MediaJobManager:
             scenes = self._load_scenes(job.project_id)
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
-
             self._cancellation.check(job_id)
             if runtime.should_skip("audio"):
                 scenes = self._load_scenes(job.project_id)
             else:
                 runtime.begin("audio", 10, metadata={"scene_count": len(scenes)})
                 scenes = _ensure_project_audio(self.store, job.project_id, scenes, config)
-                runtime.complete(
-                    "audio",
-                    artifacts=tuple(
-                        f"scene-{scene.index:04d}-audio.json"
-                        for scene in scenes
-                        if scene.audio_asset is not None
-                    ),
-                )
-
+                runtime.complete("audio", artifacts=tuple(f"scene-{scene.index:04d}-audio.json" for scene in scenes if scene.audio_asset is not None))
             self._cancellation.check(job_id)
             if runtime.should_skip("media"):
                 scenes = self._load_scenes(job.project_id)
@@ -344,65 +269,23 @@ class MediaJobManager:
                     self._cancellation.check(job_id)
                     self._update(job_id, completed_scenes=completed, scene_count=total)
 
-                generate_project_media(
-                    self.store,
-                    job.project_id,
-                    scenes,
-                    video_provider=video_provider,
-                    image_provider=image_provider,
-                    image_model=config.image.model_path.name,
-                    image_width=config.image.width,
-                    image_height=config.image.height,
-                    image_steps=config.image.steps,
-                    image_guidance_scale=config.image.guidance_scale,
-                    video_capability=capability,
-                    fallback_provider=build_video_fallback(config),
-                    width=config.video.width,
-                    height=config.video.height,
-                    fps=config.video.fps,
-                    progress_callback=progress,
-                )
+                generate_project_media(self.store, job.project_id, scenes, video_provider=video_provider, image_provider=image_provider, image_model=config.image.model_path.name, image_width=config.image.width, image_height=config.image.height, image_steps=config.image.steps, image_guidance_scale=config.image.guidance_scale, video_capability=capability, fallback_provider=build_video_fallback(config), width=config.video.width, height=config.video.height, fps=config.video.fps, progress_callback=progress)
                 scenes = self._load_scenes(job.project_id)
-                runtime.complete(
-                    "media",
-                    artifacts=tuple(f"scene-{scene.index:04d}.json" for scene in scenes),
-                    metadata={"scene_count": len(scenes)},
-                )
-
+                runtime.complete("media", artifacts=tuple(f"scene-{scene.index:04d}.json" for scene in scenes), metadata={"scene_count": len(scenes)})
             self._cancellation.check(job_id)
             if not runtime.should_skip("finalize"):
                 runtime.begin("finalize", 30, dependencies=("audio", "media"))
                 _finalize_project_media(self.store, job.project_id)
-                runtime.complete(
-                    "finalize",
-                    artifacts=("timeline.json", "subtitles.srt", "final.mp4", "qa-report.json"),
-                )
-
-            final_job = self._update(
-                job_id,
-                state="completed",
-                completed_scenes=job.scene_count,
-                completed_at=datetime.now(timezone.utc),
-                error=None,
-            )
+                runtime.complete("finalize", artifacts=("timeline.json", "subtitles.srt", "final.mp4", "qa-report.json"))
+            final_job = self._update(job_id, state="completed", completed_scenes=job.scene_count, completed_at=datetime.now(timezone.utc), error=None)
             runtime.emit("job_completed", state="completed")
             logger.info("[media] worker COMPLETE job=%s project=%s", final_job.id, final_job.project_id)
         except JobCancellationRequested as exc:
-            cancelled = self._update(
-                job_id,
-                state="cancelled",
-                error=str(exc),
-                completed_at=datetime.now(timezone.utc),
-            )
+            cancelled = self._update(job_id, state="cancelled", error=str(exc), completed_at=datetime.now(timezone.utc))
             runtime.emit("job_cancelled", state="cancelled", details={"error": cancelled.error})
         except Exception as exc:
             logger.exception("[media] worker FAILED job=%s error=%s", job.id, exc)
-            self._update(
-                job_id,
-                state="failed",
-                error=str(exc),
-                completed_at=datetime.now(timezone.utc),
-            )
+            self._update(job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc))
             runtime.emit("job_failed", state="failed", details={"error": str(exc)})
         finally:
             with self._lock:
@@ -415,7 +298,6 @@ _manager_lock = Lock()
 
 
 def get_job_manager(store: FilesystemStore) -> MediaJobManager:
-    """Return the process-local singleton worker manager."""
     global _manager
     with _manager_lock:
         if _manager is None:
