@@ -23,6 +23,7 @@ from app.logging import configure_logging
 from app.models.scene import Scene
 from app.models.timeline import Timeline
 from app.orchestrator.media_generation import generate_project_media
+from app.production_gate import run_production_gate, write_gate_report
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_fallback, build_video_provider
@@ -33,6 +34,7 @@ from app.qa.project import QAReport, validate_project
 from app.qa.report import write_qa_report
 from app.render.ffmpeg import FFmpegRenderer
 from app.storage.filesystem import FilesystemStore
+from app.storage.migrations import migrate_storage
 
 app = typer.Typer(help="Local-only AI video generation agent.")
 
@@ -129,6 +131,37 @@ def doctor(config: Path | None = typer.Option(None, "--config", exists=True)) ->
     for result in results:
         typer.echo(f"[{'OK' if result.ok else 'FAIL'}] {result.name}: {result.detail}")
     if any(not result.ok for result in results):
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def migrate(config: Path | None = typer.Option(None, "--config", exists=True)) -> None:
+    """Migrate local project manifests to the current storage schema."""
+    config_data = load_config(config)
+    migrated = migrate_storage(config_data.storage.root)
+    typer.echo(f"Migrated projects: {migrated}")
+
+
+@app.command("production-gate")
+def production_gate(
+    project_id: str,
+    report_path: Path | None = typer.Option(
+        None, "--report", help="Write the gate report to this path."
+    ),
+    config: Path | None = typer.Option(None, "--config", exists=True),
+) -> None:
+    """Run the deterministic V1 production gate for a local project."""
+    config_data = load_config(config)
+    project_uuid = UUID(project_id)
+    store = FilesystemStore(config_data.storage.root)
+    report = run_production_gate(store, project_uuid, config_data)
+    output = write_gate_report(
+        report, report_path or store.project_dir(project_uuid) / "production-gate.json"
+    )
+    for check in report.checks:
+        typer.echo(f"[{'PASS' if check.passed else 'FAIL'}] {check.name}: {check.detail}")
+    typer.echo(f"Report: {output}")
+    if not report.passed:
         raise typer.Exit(code=1)
 
 
