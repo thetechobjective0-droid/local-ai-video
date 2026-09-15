@@ -2,52 +2,72 @@
 
 A local-only AI video production pipeline designed for Apple Silicon, initially targeting an M4 Mac with 36 GB unified memory.
 
-## Current status
+## Current video architecture
 
-**Phase 11 — local web API and browser dashboard implemented; M4 hardware acceptance is pending.**
-
-The project includes the local Director pipeline, scene metadata, deterministic image generation, local macOS TTS, SRT/WebVTT subtitles, deterministic timelines, FFmpeg rendering, bounded media recovery, deterministic motion fallback, a real local AI image-to-video adapter, and a loopback-only FastAPI/Uvicorn dashboard.
-
-## Local-only architecture
-
-All inference and media processing are intended to run on the local machine:
+The production default now generates **real temporal AI video**, not a slideshow or Ken-Burns animation:
 
 ```text
-User -> CLI/UI -> Orchestrator -> Ollama/local models -> local media -> FFmpeg -> final.mp4
+User prompt
+  -> local Ollama Director
+  -> storyboard + scene keyframes
+  -> LTX-2.3 MLX image-to-video
+  -> real temporal frames + synchronized native audio
+  -> timeline/subtitles
+  -> FFmpeg final MP4
 ```
 
-GitHub is used for source control only. The application must not automatically upload prompts, media, artifacts, logs, or telemetry.
+The default Apple-Silicon provider is `ltx2_mlx`. The older PyTorch `ltx_video` adapter remains available, and `ffmpeg_ken_burns` is an explicit deterministic fallback only.
+
+## Local-only runtime
+
+All inference and media processing run locally. No prompts, media, artifacts, logs, or telemetry are uploaded by the application.
+
+The LTX-2.3 MLX runtime is an external local dependency because it uses a separate Apple-Silicon MLX environment. The application invokes it with `uv run --offline`, so generation cannot silently install or download dependencies.
+
+### Prepare the LTX-2.3 MLX runtime
+
+```bash
+mkdir -p data/runtime
+git clone https://github.com/appautomaton/ltx-video-mlx.git data/runtime/ltx-video-mlx
+cd data/runtime/ltx-video-mlx
+uv sync
+```
+
+Prepare the local LTX-2.3 weights inside that runtime following its model instructions. The runtime supports text-to-video and image-to-video with synchronized audio on Apple Silicon. See `docs/ltx2-mlx.md` for the application contract.
+
+### Configuration
+
+```yaml
+video:
+  provider: ltx2_mlx
+  engine_path: ./data/runtime/ltx-video-mlx
+  uv_command: uv
+  bits: 8
+  native_audio: true
+  i2v_strength: 0.95
+  allow_fallback: false
+  width: 768
+  height: 512
+  fps: 25
+```
+
+Real AI scenes are intentionally constrained to 5–10 seconds so the storyboard produces model-sized temporal clips. Longer videos are assembled from multiple generated scenes.
 
 ## Web dashboard
-
-Install the development environment with `uv` and launch the local dashboard:
 
 ```bash
 uv sync --extra dev
 uv run video-agent-web
 ```
 
-Open `http://127.0.0.1:8765/` on the same machine. The web server binds to loopback by default and exposes project creation, storyboard inspection, persisted media previews, scene regeneration, QA, timeline/subtitle visibility, and final MP4 playback.
+Open `http://127.0.0.1:8765/` on the same machine. The UI is the primary workflow for project creation, storyboard inspection, media generation, scene regeneration, QA, and final MP4 playback.
 
-See `docs/phase-11-web.md` for the API surface, artifact safety rules, and operational details.
+The scene cards identify whether a clip is:
 
-## Development
+- `AI temporal video` — real temporal generation from an AI I2V backend.
+- `Deterministic image motion` — explicit FFmpeg still-image animation.
 
-Install the base development environment with `uv`:
-
-```bash
-uv sync --extra dev
-```
-
-For local Diffusers image generation and LTX video generation, install the optional image stack:
-
-```bash
-uv sync --extra image
-```
-
-Both AI media backends expect **pre-downloaded local model directories**. They use local-only loading and do not download model weights during generation.
-
-### Image generation
+## Image generation
 
 ```yaml
 image:
@@ -60,77 +80,34 @@ image:
   guidance_scale: 7.0
 ```
 
-### AI image-to-video
+## Explicit deterministic fallback
 
-The first real AI I2V backend is LTX-Video 2B distilled, selected for the 36 GB unified-memory target. The deterministic FFmpeg provider remains the fallback.
-
-```yaml
-video:
-  provider: ltx_video
-  model_path: ./data/models/LTX-Video
-  device: mps
-  dtype: float16
-  width: 704
-  height: 384
-  fps: 16
-```
-
-Generate a scene video after its image exists:
-
-```bash
-uv run video-agent generate-video <PROJECT_ID> <SCENE_ID>
-```
-
-For deterministic motion without an AI video model:
+Use this only when you intentionally want still-image motion instead of AI video:
 
 ```yaml
 video:
   provider: ffmpeg_ken_burns
 ```
 
-Run the CLI:
+The application never silently switches from an AI provider to this fallback unless `allow_fallback: true` is explicitly configured.
+
+## Development
 
 ```bash
-uv run video-agent health
-uv run video-agent doctor
-```
-
-Generate a deterministic timeline and render it:
-
-```bash
-uv run video-agent timeline <PROJECT_ID>
-uv run video-agent render <PROJECT_ID>
-```
-
-Run quality checks:
-
-```bash
+uv sync --extra dev
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy app
 ```
 
-## Rendering boundary
-
-Phase 6 keeps FFmpeg-specific subprocess construction inside `app/render/ffmpeg.py`. The renderer consumes the persisted `timeline.json`, resolves local artifact metadata, renders the scene sequence, validates the resulting MP4 with `ffprobe`, and persists `final-video.json` plus `render.json`.
-
-Phase 7 scene videos use the same artifact contract, so generated AI clips and deterministic motion clips can feed the renderer without changing rendering business logic.
-
 ## Documentation
 
-Read these before contributing:
-
 - `plan.md` — implementation roadmap and architecture
-- `AGENTS.md` — AI agent operating contract
-- `docs/DOCUMENTATION_STANDARD.md` — documentation Definition of Done
-- `docs/phase-7-ltx.md` — local LTX image-to-video backend status
+- `docs/ltx2-mlx.md` — real Apple-Silicon LTX-2.3 runtime setup
+- `docs/phase-7-ltx.md` — legacy PyTorch LTX-Video backend
 - `docs/phase-11-web.md` — local web API and dashboard guide
 - `.agents/skills/` — task-specific engineering playbooks
 - `CONTRIBUTING.md` — contribution workflow
-- `TESTING.md` — testing strategy
+- `TESTING.md` — CI/test strategy
 
-Documentation is a first-class deliverable. Feature changes should update the relevant docs and examples in the same change.
-
-## Repository rule
-
-Do not commit generated video/audio/image assets, model weights, local caches, secrets, or machine-specific state.
+Do not commit generated media, model weights, local caches, secrets, or machine-specific state.
