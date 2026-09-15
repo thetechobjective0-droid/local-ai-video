@@ -14,12 +14,13 @@ import tempfile
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.config import load_config
+from app.config import AppConfig, load_config
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.image import ImageProvider
 from app.storage.filesystem import FilesystemStore
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,9 @@ class MediaJob(BaseModel):
     completed_scenes: int = 0
 
 
-def _build_image_provider_if_needed(config, scenes: List[Scene]):
+def _build_image_provider_if_needed(
+    config: AppConfig, scenes: List[Scene]
+) -> ImageProvider | None:
     """Construct Diffusers only when a scene still needs an image asset."""
     if not any(scene.image_asset is None for scene in scenes):
         logger.info("[media] all scenes already have image assets; image provider not required")
