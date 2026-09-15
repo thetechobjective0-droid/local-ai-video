@@ -1,5 +1,6 @@
 """Tests for project-level media generation orchestration."""
 
+import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -15,10 +16,9 @@ from app.storage.filesystem import FilesystemStore
 
 
 class FakeVideoProvider:
-    provider_name = "fake-video"
-
-    def __init__(self, output: Path, *, fail: bool = False) -> None:
+    def __init__(self, output: Path, *, provider_name: str, fail: bool = False) -> None:
         self.output = output
+        self.provider_name = provider_name
         self.fail = fail
 
     def generate(self, request: VideoGenerationRequest) -> VideoResult:
@@ -34,7 +34,7 @@ class FakeVideoProvider:
             fps=request.fps,
             width=704,
             height=384,
-            sha256=__import__("hashlib").sha256(b"fake-video").hexdigest(),
+            sha256=hashlib.sha256(b"fake-video").hexdigest(),
         )
 
 
@@ -62,7 +62,20 @@ def _create_project(store: FilesystemStore, project_id: UUID) -> None:
     )
 
 
-def test_project_media_uses_preferred_i2v(tmp_path: Path) -> None:
+def _bypass_video_qa(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.generation.video.validate_scene_video",
+        lambda *args, **kwargs: {
+            "duration_seconds": kwargs["expected_duration"],
+            "width": kwargs["expected_resolution"][0],
+            "height": kwargs["expected_resolution"][1],
+            "fps": kwargs["expected_fps"],
+        },
+    )
+
+
+def test_project_media_uses_preferred_i2v(monkeypatch, tmp_path: Path) -> None:
+    _bypass_video_qa(monkeypatch)
     store = FilesystemStore(tmp_path / "data")
     project_id = uuid4()
     directory = store.project_dir(project_id)
@@ -83,7 +96,7 @@ def test_project_media_uses_preferred_i2v(tmp_path: Path) -> None:
             "mime": "image/png",
         },
     )
-    provider = FakeVideoProvider(tmp_path / "out.mp4")
+    provider = FakeVideoProvider(tmp_path / "out.mp4", provider_name="ltx_video")
     results = generate_project_media(
         store,
         project_id,
@@ -95,7 +108,8 @@ def test_project_media_uses_preferred_i2v(tmp_path: Path) -> None:
     assert results[0].used_fallback is False
 
 
-def test_project_media_falls_back_after_i2v_failure(tmp_path: Path) -> None:
+def test_project_media_falls_back_after_i2v_failure(monkeypatch, tmp_path: Path) -> None:
+    _bypass_video_qa(monkeypatch)
     store = FilesystemStore(tmp_path / "data")
     project_id = uuid4()
     directory = store.project_dir(project_id)
@@ -116,8 +130,8 @@ def test_project_media_falls_back_after_i2v_failure(tmp_path: Path) -> None:
             "mime": "image/png",
         },
     )
-    failing = FakeVideoProvider(tmp_path / "failed.mp4", fail=True)
-    fallback = FakeVideoProvider(tmp_path / "fallback.mp4")
+    failing = FakeVideoProvider(tmp_path / "failed.mp4", provider_name="ltx_video", fail=True)
+    fallback = FakeVideoProvider(tmp_path / "fallback.mp4", provider_name="ffmpeg_ken_burns")
     results = generate_project_media(
         store,
         project_id,
@@ -148,6 +162,6 @@ def test_project_media_rejects_text_to_video_until_supported(tmp_path: Path) -> 
             store,
             project_id,
             [scene],
-            video_provider=FakeVideoProvider(tmp_path / "out.mp4"),
+            video_provider=FakeVideoProvider(tmp_path / "out.mp4", provider_name="ltx_video"),
             video_capability=VideoCapability(text_to_video=True),
         )
