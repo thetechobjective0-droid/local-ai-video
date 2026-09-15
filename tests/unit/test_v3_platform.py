@@ -14,6 +14,7 @@ from app.platform.registry import compatible_video_providers, list_providers
 def test_provider_registry_is_versioned_and_local_only() -> None:
     providers = list_providers()
     assert providers
+    assert any(item.name == "ltx2_mlx" for item in providers)
     assert all(item.version for item in providers)
     assert all(item.local_only for item in providers)
 
@@ -27,7 +28,7 @@ def test_video_compatibility_filters_capabilities() -> None:
         memory_class="high",
     )
     providers = compatible_video_providers(capability)
-    assert [item.name for item in providers] == ["ltx_video"]
+    assert [item.name for item in providers] == ["ltx2_mlx", "ltx_video"]
 
 
 def test_experiment_manifest_round_trip(tmp_path) -> None:
