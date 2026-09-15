@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 from uuid import UUID
@@ -15,7 +16,7 @@ from app.storage.filesystem import FilesystemStore
 
 
 class FFmpegRenderer:
-    """Render a resolved timeline through a local FFmpeg executable."""
+    """Render static-image/video scenes with bounded recovery."""
 
     def __init__(self, *, command: str = "ffmpeg", ffprobe_command: str = "ffprobe") -> None:
         self.command = command
@@ -65,6 +66,7 @@ class FFmpegRenderer:
                 capture_output=True,
                 text=True,
                 timeout=max(300, round(timeline.duration_seconds * 20)),
+                env=_child_process_environment(),
             )
         except subprocess.TimeoutExpired as exc:
             raise VideoAgentError("FFmpeg render timed out") from exc
@@ -207,6 +209,14 @@ class FFmpegRenderer:
             ]
         )
         return command, filter_complex
+
+
+def _child_process_environment() -> dict[str, str]:
+    """Remove macOS malloc diagnostics from media subprocesses."""
+    env = os.environ.copy()
+    env.pop("MallocStackLogging", None)
+    env.pop("MallocStackLoggingNoCompact", None)
+    return env
 
 
 def _load_artifacts(directory: Path) -> dict[UUID, Artifact]:
