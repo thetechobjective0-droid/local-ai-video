@@ -40,12 +40,12 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
 | 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
-| 23 | V2 advanced production features | IN PROGRESS; reproducibility, artifact-integrity, export/import, dependency-aware checkpoints, persistent job resume, selective scene regeneration, resource-aware scheduling, and structured event history implemented |
+| 23 | V2 advanced production features | IN PROGRESS; reproducibility, artifact-integrity, export/import, dependency-aware checkpoints, persistent job resume, selective scene regeneration, resource-aware scheduling, structured event history, operator event/resource endpoints, and bounded refinement proposals implemented |
 | 24 | V3 platform evolution/research | PLANNED; implementation scope and acceptance criteria defined |
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, reusable checkpoint runtime, persistent media-job checkpoint integration, selective scene regeneration, resource-aware scheduling, and append-only structured job event history. Scene regeneration invalidates stale scene/downstream artifacts and media/finalization checkpoints, clears stale scene references, regenerates required downstream media, and rebuilds the final project. Media jobs now use conservative local memory admission based on provider memory class and current macOS resource availability, with heavyweight providers serialized by policy and queued jobs released when memory becomes available. Portable archive import/export is compatible with Python 3.11, rejects unsafe links/device members, and verifies the persisted integrity manifest correctly. Every checkpoint stage can now record start/skip/block/complete events, and the resource-aware worker records admission/release and terminal job events. Event history is local-only JSONL, bounded on replay, and diagnostic failures cannot interrupt media execution. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
+Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, reusable checkpoint runtime, persistent media-job checkpoint integration, selective scene regeneration, resource-aware scheduling, append-only structured job event history, operator event/resource endpoints, and bounded deterministic evaluation/refinement proposals. Scene regeneration invalidates stale scene/downstream artifacts and media/finalization checkpoints, clears stale scene references, regenerates required downstream media, and rebuilds the final project. Media jobs use conservative local memory admission based on provider memory class and current macOS resource availability, with heavyweight providers serialized by policy and queued jobs released when memory becomes available. Portable archive import/export is compatible with Python 3.11, rejects unsafe links/device members, and verifies the persisted integrity manifest correctly. Every checkpoint stage can record start/skip/block/complete events, resource admission/release and job terminal state are recorded, recent project history is readable through the local API, and bounded refinement proposals are produced from deterministic evaluation scores. The remaining Phase 23 acceptance work is limited to the broader product-evolution items explicitly listed in `docs/phase-23-24.md` that have not yet been implemented, including cancellation/shutdown semantics, richer scene editing/voice/transition controls, human approval checkpoints, and deeper UI visualization. Phase 24 remains sequenced after these stable V2 extension points. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
 
 ## Phase 23 — V2 Advanced Production Features
 
@@ -60,16 +60,18 @@ Implemented foundations:
 - `app/orchestrator/events.py`: versioned append-only local JSONL job history with sequence numbers, bounded replay, and malformed-record tolerance.
 - `app/orchestrator/jobs.py`: durable audio/media/finalization stage checkpoints and explicit interrupted/failed job resume.
 - `app/orchestrator/regeneration.py`: dependency-aware invalidation of scene artifacts, final outputs, evaluation artifacts, and stale media/finalization checkpoints.
-- `app/job_api.py`: selective scene regeneration route with downstream regeneration and deterministic finalization.
+- `app/job_api.py`: selective scene regeneration route plus local event-history and resource-reservation endpoints.
 - `app/orchestrator/resource_scheduler.py`: local memory admission control, reservation accounting, provider memory classes, and conservative high-memory concurrency limits.
 - `app/orchestrator/scheduled_jobs.py`: resource-aware media worker wrapper with queued admission and reservation release, plus structured resource/job lifecycle events.
+- `app/evaluation.py`: deterministic project scoring plus bounded refinement proposals that never trigger autonomous regeneration.
 - `tests/unit/test_job_events.py`: deterministic coverage for event sequencing, bounded replay, and malformed-record tolerance.
+- `tests/unit/test_evaluation.py`: coverage for bounded refinement proposal generation.
 
-Next increments remain advanced evaluation/refinement and dashboard resume/regeneration/resource/event-history controls.
+Existing dashboard functionality already exposes scene-level status/artifact inspection, resume, regeneration, QA, and final-video readiness. The next V2 increment is focused on the remaining explicit Phase 23 product controls: cancellation/graceful shutdown, richer scene/timeline/voice/transition editing, human approval checkpoints, and deeper event/resource visualization.
 
 ## Phase 24 — V3 Platform Evolution / Research
 
-The detailed contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
+The detailed contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after the Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
 
 ## Definition of done
 
