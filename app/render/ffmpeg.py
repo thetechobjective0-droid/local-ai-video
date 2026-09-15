@@ -236,14 +236,10 @@ def _load_artifacts(directory: Path) -> dict[UUID, Artifact]:
 
 def _resolve_artifact_path(directory: Path, artifact: Artifact) -> Path:
     """Resolve an artifact and reject absolute/relative paths outside the project."""
-    project_dir = directory.resolve()
-    path = artifact.path.expanduser()
-    path = (project_dir / path).resolve() if not path.is_absolute() else path.resolve()
-    if project_dir not in path.parents:
-        raise VideoAgentError(f"artifact path escapes project directory: {artifact.path}")
-    if not path.is_file():
-        raise VideoAgentError(f"artifact file does not exist: {path}")
-    return path
+    try:
+        return FilesystemStore.resolve_path(directory, artifact.path, must_exist=True)
+    except (FileNotFoundError, ValueError) as exc:
+        raise VideoAgentError(f"invalid artifact path: {artifact.path}") from exc
 
 
 def _remove_partial_outputs(directory: Path, output: Path) -> None:
