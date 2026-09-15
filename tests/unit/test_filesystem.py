@@ -33,3 +33,44 @@ def test_low_disk_space_is_rejected(tmp_path: Path) -> None:
     store = FilesystemStore(tmp_path, minimum_free_bytes=10**30)
     with pytest.raises(InsufficientDiskError):
         store.ensure_capacity()
+
+
+def test_resolve_path_rejects_parent_traversal(tmp_path: Path) -> None:
+    store = FilesystemStore(tmp_path, minimum_free_bytes=0)
+    project = make_project()
+    store.create_project(project)
+
+    with pytest.raises(ValueError, match="escapes root"):
+        store.project_path(project.id, Path("../outside.txt"))
+
+
+def test_resolve_path_rejects_absolute_outside_path(tmp_path: Path) -> None:
+    store = FilesystemStore(tmp_path, minimum_free_bytes=0)
+    project = make_project()
+    store.create_project(project)
+
+    outside = tmp_path.parent / "outside.txt"
+    with pytest.raises(ValueError, match="escapes root"):
+        store.project_path(project.id, outside)
+
+
+def test_resolve_path_rejects_symlink_escape(tmp_path: Path) -> None:
+    store = FilesystemStore(tmp_path, minimum_free_bytes=0)
+    project = make_project()
+    directory = store.create_project(project)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret", encoding="utf-8")
+    (directory / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ValueError, match="escapes root"):
+        store.project_path(project.id, Path("linked/secret.txt"), must_exist=True)
+
+
+def test_resolve_path_requires_existing_file(tmp_path: Path) -> None:
+    store = FilesystemStore(tmp_path, minimum_free_bytes=0)
+    project = make_project()
+    store.create_project(project)
+
+    with pytest.raises(FileNotFoundError):
+        store.project_path(project.id, Path("missing.bin"), must_exist=True)
