@@ -42,9 +42,7 @@ class MediaJob(BaseModel):
     completed_scenes: int = 0
 
 
-def _build_image_provider_if_needed(
-    config: AppConfig, scenes: List[Scene]
-) -> ImageProvider | None:
+def _build_image_provider_if_needed(config: AppConfig, scenes: List[Scene]) -> ImageProvider | None:
     """Construct Diffusers only when a scene still needs an image asset."""
     if not any(scene.image_asset is None for scene in scenes):
         logger.info("[media] all scenes already have image assets; image provider not required")

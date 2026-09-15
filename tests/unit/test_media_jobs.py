@@ -28,7 +28,9 @@ def test_image_provider_is_not_initialized_when_assets_exist(monkeypatch) -> Non
     assert jobs._build_image_provider_if_needed(config, [_scene(has_image=True)]) is None
 
 
-def test_image_provider_is_initialized_when_an_asset_is_missing(monkeypatch, tmp_path: Path) -> None:
+def test_image_provider_is_initialized_when_an_asset_is_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
     config = AppConfig()
     expected = object()
 
