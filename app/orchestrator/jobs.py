@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
-from concurrent.futures import Future, ThreadPoolExecutor
-from datetime import datetime, timezone
 import json
 import logging
+import tempfile
+import wave
+from concurrent.futures import Future, ThreadPoolExecutor
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
 from typing import List
 from uuid import UUID, uuid4
-import tempfile
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,8 +23,8 @@ from app.models.artifact import Artifact
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
-from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.diffusers_image import DiffusersImageProvider
+from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.image import ImageProvider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.qa.project import validate_project
@@ -83,8 +84,6 @@ def _audio_is_usable(store: FilesystemStore, project_id: UUID, scene: Scene) -> 
             path = (directory / path).resolve()
         if directory.resolve() not in path.parents or not path.is_file():
             return False
-        import wave
-
         with wave.open(str(path), "rb") as audio:
             if audio.getnframes() <= 0:
                 return False
