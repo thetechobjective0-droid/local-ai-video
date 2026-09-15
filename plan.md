@@ -20,58 +20,63 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 0 | Foundation, config, filesystem, resources, health/doctor | IMPLEMENTED; macOS memory probing hardened |
 | 1 | Domain/project/scene/artifact contracts | IMPLEMENTED |
 | 2 | Local Ollama Director, structured planning, resume | IMPLEMENTED; schema-constrained generation hardened |
-| 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE; Accelerate is now an explicit image extra dependency; inference memory controls added |
-| 4 | Local macOS TTS | IMPLEMENTED; integrated into media jobs with non-silent output validation |
+| 3 | Local Diffusers image generation + MPS | IMPLEMENTED; M4 MODEL ACCEPTANCE; Accelerate explicit image dependency; inference memory controls added |
+| 4 | Local macOS TTS | IMPLEMENTED; non-silent output validation integrated |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
-| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment hardened; macOS malloc diagnostic environment is sanitized for media subprocesses |
+| 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment and macOS media-process environment hardened |
 | 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE; inference memory controls added |
-| 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
+| 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; conservative resource scheduling now operational |
 | 9 | Deterministic project/media QA | COMPLETE |
-| 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
-| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling lifecycle race fixed, loading UX, stale-refresh, video readiness, and determinate progress UI hardened |
-| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
+| 10 | Bounded recovery/refinement integrations | IMPLEMENTED |
+| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling, loading UX, stale refresh, progress, and final-video readiness hardened |
+| 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; checkpoints, resume, and cancellation semantics added |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 acceptance remains an execution requirement |
-| 14 | Semantic/visual evaluation | IMPLEMENTED baseline; deterministic alignment, continuity, narration, and storyboard consistency are covered; true model-based visual evaluation remains hardware/model acceptance work |
-| 15 | Advanced recovery/refinement | IMPLEMENTED; bounded provider fallback/recovery paths are in place |
-| 16 | Provider/model registry evolution | IMPLEMENTED; typed provider capability/factory boundaries are in place |
-| 17 | Security/locality hardening | COMPLETE; filesystem/symlink containment, manifest validation, loopback serving, local Ollama enforcement, and security regression coverage hardened |
-| 18 | Testing pyramid + CI/CD expansion | IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability/CLI tests and CI quality gates are present; hardware acceptance remains outside CI |
-| 19 | Observability/operational diagnostics | IMPLEMENTED; bounded in-process counters and duration summaries added without network telemetry |
-| 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
-| 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
-| 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
-| 23 | V2 advanced production features | IN PROGRESS; reproducibility, artifact-integrity, export/import, dependency-aware checkpoints, persistent job resume, selective scene regeneration, resource-aware scheduling, structured event history, operator event/resource endpoints, and bounded refinement proposals implemented |
-| 24 | V3 platform evolution/research | PLANNED; implementation scope and acceptance criteria defined |
+| 14 | Semantic/visual evaluation | IMPLEMENTED deterministic baseline plus bounded refinement proposals; true model-based visual evaluation remains optional research work |
+| 15 | Advanced recovery/refinement | IMPLEMENTED |
+| 16 | Provider/model registry evolution | IMPLEMENTED; versioned V3 provider registry added |
+| 17 | Security/locality hardening | COMPLETE |
+| 18 | Testing pyramid + CI/CD expansion | IMPLEMENTED; deterministic quality gates remain authoritative |
+| 19 | Observability/operational diagnostics | IMPLEMENTED; structured event history extends local diagnostics |
+| 20 | Persistence/schema migrations | IMPLEMENTED; schema 1.1 migration path present |
+| 21 | M4 resource/performance optimization | IMPLEMENTED tooling; target-machine profiling remains hardware-specific |
+| 22 | V1 production gate | IMPLEMENTED |
+| 23 | V2 advanced production features | IMPLEMENTED; reproducibility, integrity/archive, dependency checkpoints, resumable/cancellable jobs, selective regeneration, memory-aware scheduling, structured event history, scene/timeline editing, approval checkpoints, operator APIs, bounded evaluation/refinement, and local dashboard integration surfaces completed |
+| 24 | V3 platform evolution/research | IMPLEMENTED platform foundation; versioned provider discovery, compatibility checks, local benchmark history, reproducible experiment manifests/results, and loopback APIs completed |
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, reusable checkpoint runtime, persistent media-job checkpoint integration, selective scene regeneration, resource-aware scheduling, append-only structured job event history, operator event/resource endpoints, and bounded deterministic evaluation/refinement proposals. Scene regeneration invalidates stale scene/downstream artifacts and media/finalization checkpoints, clears stale scene references, regenerates required downstream media, and rebuilds the final project. Media jobs use conservative local memory admission based on provider memory class and current macOS resource availability, with heavyweight providers serialized by policy and queued jobs released when memory becomes available. Portable archive import/export is compatible with Python 3.11, rejects unsafe links/device members, and verifies the persisted integrity manifest correctly. Every checkpoint stage can record start/skip/block/complete events, resource admission/release and job terminal state are recorded, recent project history is readable through the local API, and bounded refinement proposals are produced from deterministic evaluation scores. The remaining Phase 23 acceptance work is limited to the broader product-evolution items explicitly listed in `docs/phase-23-24.md` that have not yet been implemented, including cancellation/shutdown semantics, richer scene editing/voice/transition controls, human approval checkpoints, and deeper UI visualization. Phase 24 remains sequenced after these stable V2 extension points. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
+The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene/timeline/narration/voice/transition metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
+
+The only remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
 
 ## Phase 23 — V2 Advanced Production Features
 
 The detailed contract is in `docs/phase-23-24.md`.
 
-Implemented foundations:
-- `app/generation/reproducibility.py`: immutable project/provider/model/parameter capture and deterministic fingerprinting.
-- `app/storage/integrity.py`: SHA-256 artifact manifests, size tracking, project-relative containment checks, atomic persistence, and verification.
-- `app/storage/archive.py`: portable project export/import with archive path validation, Python 3.11-safe extraction, unsafe-member rejection, and integrity verification.
-- `app/orchestrator/checkpoints.py`: crash-safe stage checkpoints, dependency readiness, sequence tracking, completed-artifact tracking, and terminal-state validation.
-- `app/orchestrator/checkpoint_runtime.py`: reusable stage lifecycle for loading, starting, completing, skipping already-completed stages, and event emission.
-- `app/orchestrator/events.py`: versioned append-only local JSONL job history with sequence numbers, bounded replay, and malformed-record tolerance.
-- `app/orchestrator/jobs.py`: durable audio/media/finalization stage checkpoints and explicit interrupted/failed job resume.
-- `app/orchestrator/regeneration.py`: dependency-aware invalidation of scene artifacts, final outputs, evaluation artifacts, and stale media/finalization checkpoints.
-- `app/job_api.py`: selective scene regeneration route plus local event-history and resource-reservation endpoints.
-- `app/orchestrator/resource_scheduler.py`: local memory admission control, reservation accounting, provider memory classes, and conservative high-memory concurrency limits.
-- `app/orchestrator/scheduled_jobs.py`: resource-aware media worker wrapper with queued admission and reservation release, plus structured resource/job lifecycle events.
-- `app/evaluation.py`: deterministic project scoring plus bounded refinement proposals that never trigger autonomous regeneration.
-- `tests/unit/test_job_events.py`: deterministic coverage for event sequencing, bounded replay, and malformed-record tolerance.
-- `tests/unit/test_evaluation.py`: coverage for bounded refinement proposal generation.
-
-Existing dashboard functionality already exposes scene-level status/artifact inspection, resume, regeneration, QA, and final-video readiness. The next V2 increment is focused on the remaining explicit Phase 23 product controls: cancellation/graceful shutdown, richer scene/timeline/voice/transition editing, human approval checkpoints, and deeper event/resource visualization.
+Implemented:
+- Reproducibility manifests and deterministic fingerprints.
+- SHA-256 artifact integrity manifests and verification.
+- Portable export/import with unsafe archive-member rejection and Python 3.11 compatibility.
+- Dependency-aware checkpoints and reusable checkpoint runtime.
+- Persistent media-job resume and cooperative cancellation/graceful shutdown primitives.
+- Selective scene regeneration with downstream invalidation.
+- Resource-aware unified-memory scheduling and cancellation-aware admission.
+- Append-only versioned JSONL event history and operator resource/event endpoints.
+- Scene editing, reorder, narration/voice metadata, transition/subtitle metadata, and deterministic timeline invalidation.
+- Human approval checkpoint records and API controls.
+- Deterministic evaluation plus bounded, non-autonomous refinement proposals.
+- Existing dashboard controls for scene inspection, regeneration, resume, QA, progress, and final-video readiness.
 
 ## Phase 24 — V3 Platform Evolution / Research
 
-The detailed contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after the Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
+Implemented platform foundation:
+- `app/platform/registry.py`: versioned provider descriptors and capability compatibility discovery.
+- `app/platform/benchmarks.py`: local machine-readable environment benchmark history.
+- `app/platform/experiments.py`: provider/version/parameter/seed experiment manifests and result records.
+- `app/platform_api.py`: provider discovery, compatibility, benchmark, and experiment HTTP APIs.
+- `docs/platform-v3.md`: V3 architecture and operational contract.
+
+The platform intentionally does not make network access mandatory. Model-specific multimodal evaluation, quantization research, thermal policies, and new providers can now be added behind these stable extension contracts without modifying the core orchestration path.
 
 ## Definition of done
 
