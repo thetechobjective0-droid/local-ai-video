@@ -26,6 +26,22 @@ class FilesystemStore:
             raise ValueError("project path escapes storage root")
         return candidate
 
+    @staticmethod
+    def resolve_path(root: Path, path: Path, *, must_exist: bool = False) -> Path:
+        """Resolve a path beneath root, rejecting traversal and symlink escapes."""
+        root = root.expanduser().resolve()
+        candidate = path.expanduser()
+        resolved = (root / candidate).resolve() if not candidate.is_absolute() else candidate.resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError(f"path escapes root: {path}")
+        if must_exist and not resolved.is_file():
+            raise FileNotFoundError(resolved)
+        return resolved
+
+    def project_path(self, project_id: UUID | str, path: Path, *, must_exist: bool = False) -> Path:
+        """Resolve a project-relative path while following and validating symlinks."""
+        return self.resolve_path(self.project_dir(project_id), path, must_exist=must_exist)
+
     def ensure_capacity(self, required_bytes: int = 0) -> None:
         """Fail before generation if free space is below the configured safety floor."""
         free_bytes = shutil.disk_usage(self.root).free
@@ -46,9 +62,7 @@ class FilesystemStore:
     def write_json(self, directory: Path, filename: str, value: Any) -> Path:
         """Atomically persist a JSON artifact inside an existing project directory."""
         directory = directory.resolve()
-        target = (directory / filename).resolve()
-        if directory not in target.parents:
-            raise ValueError("artifact path escapes project directory")
+        target = self.resolve_path(directory, Path(filename))
         if not filename or Path(filename).name != filename or Path(filename).suffix != ".json":
             raise ValueError("artifact filename must be a single .json basename")
 
@@ -63,5 +77,5 @@ class FilesystemStore:
 
     def load_project(self, project_id: UUID | str) -> VideoProject:
         """Load and validate project metadata from disk."""
-        path = self.project_dir(project_id) / "project.json"
+        path = self.project_path(project_id, Path("project.json"), must_exist=True)
         return VideoProject.model_validate_json(path.read_text(encoding="utf-8"))
