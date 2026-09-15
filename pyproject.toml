@@ -29,7 +29,7 @@ image = [
 ]
 
 [project.scripts]
-video-agent = "app.cli:app"
+video-agent = "app.production_cli:app"
 video-agent-web = "app.web:run"
 
 [tool.ruff]
