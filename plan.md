@@ -41,11 +41,11 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; target-machine profiling remains hardware-specific |
 | 22 | V1 production gate | IMPLEMENTED |
 | 23 | V2 advanced production features | IMPLEMENTED; reproducibility, integrity/archive, dependency checkpoints, resumable/cancellable jobs, selective regeneration, memory-aware scheduling, structured event history, scene/timeline editing, per-scene narration/voice controls, transition/subtitle metadata, approval checkpoints, operator APIs, bounded evaluation/refinement, and local dashboard integration surfaces completed |
-| 24 | V3 platform evolution/research | IMPLEMENTED platform foundation; versioned provider discovery, compatibility checks, local benchmark history, reproducible experiment manifests/results, and loopback APIs completed |
+| 24 | V3 platform evolution/research | IMPLEMENTED platform foundation; versioned provider discovery, compatibility checks, local benchmark history, reproducible experiment manifests/results, benchmark comparison reporting, and loopback APIs completed |
 
 ## Current implementation state
 
-The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
+The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, benchmark comparison/regression reporting, and loopback APIs for platform operations. Research-specific model integrations remain optional and do not alter the stable generation path.
 
 The only remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
 
@@ -73,10 +73,11 @@ Implemented:
 
 Implemented platform foundation:
 - `app/platform/registry.py`: versioned provider descriptors and capability compatibility discovery.
-- `app/platform/benchmarks.py`: local machine-readable environment benchmark history.
+- `app/platform/benchmarks.py`: local machine-readable environment benchmark history and shared-measurement comparison/regression reporting.
 - `app/platform/experiments.py`: provider/version/parameter/seed experiment manifests and result records.
-- `app/platform_api.py`: provider discovery, compatibility, benchmark, and experiment HTTP APIs.
+- `app/platform_api.py`: provider discovery, compatibility, benchmark history/comparison, and experiment HTTP APIs.
 - `docs/platform-v3.md`: V3 architecture and operational contract.
+- `tests/unit/test_v3_platform.py`: provider, experiment, and benchmark-comparison coverage.
 
 The platform intentionally does not make network access mandatory. Model-specific multimodal evaluation, quantization research, thermal policies, and new providers can now be added behind these stable extension contracts without modifying the core orchestration path.
 
