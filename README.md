@@ -16,7 +16,7 @@ User prompt
   -> FFmpeg final MP4
 ```
 
-The default Apple-Silicon provider is `ltx2_mlx`. The older PyTorch `ltx_video` adapter remains available, and `ffmpeg_ken_burns` is an explicit deterministic fallback only.
+The default Apple-Silicon provider is `ltx2_mlx`. It uses the local `dgrauet/ltx-2-mlx` implementation, q8 weights, a two-stage pipeline, and low-memory streaming by default. The older PyTorch `ltx_video` adapter remains available, and `ffmpeg_ken_burns` is an explicit deterministic fallback only.
 
 ## Local-only runtime
 
@@ -28,27 +28,29 @@ The LTX-2.3 MLX runtime is an external local dependency because it uses a separa
 
 ```bash
 mkdir -p data/runtime
-git clone https://github.com/appautomaton/ltx-video-mlx.git data/runtime/ltx-video-mlx
-cd data/runtime/ltx-video-mlx
-uv sync
+git clone https://github.com/dgrauet/ltx-2-mlx.git data/runtime/ltx-2-mlx
+cd data/runtime/ltx-2-mlx
+uv sync --all-extras
 ```
 
-Prepare the local LTX-2.3 weights inside that runtime following its model instructions. The runtime supports text-to-video and image-to-video with synchronized audio on Apple Silicon. See `docs/ltx2-mlx.md` for the application contract.
+Prepare a local q8 model pack at `data/models/ltx-2.3-mlx-q8`. The MLX runtime documents Apple-Silicon support, real I2V, synchronized audio, and q8 operation on systems in the 32 GB+ class. See `docs/ltx2-mlx.md` for the application contract.
 
 ### Configuration
 
 ```yaml
 video:
   provider: ltx2_mlx
-  engine_path: ./data/runtime/ltx-video-mlx
+  engine_path: ./data/runtime/ltx-2-mlx
+  model_path: ./data/models/ltx-2.3-mlx-q8
   uv_command: uv
+  low_ram: true
+  pipeline: two-stage
   bits: 8
   native_audio: true
-  i2v_strength: 0.95
   allow_fallback: false
-  width: 768
-  height: 512
-  fps: 25
+  width: 704
+  height: 480
+  fps: 24
 ```
 
 Real AI scenes are intentionally constrained to 5–10 seconds so the storyboard produces model-sized temporal clips. Longer videos are assembled from multiple generated scenes.
