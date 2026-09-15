@@ -32,58 +32,48 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
 | 14 | Semantic/visual evaluation | IN PROGRESS; deterministic alignment, continuity, narration, and storyboard consistency baselines added |
-| 15 | Advanced recovery/refinement | PLANNED |
-| 16 | Provider/model registry evolution | PLANNED |
+| 15 | Advanced recovery/refinement | IMPLEMENTED; bounded provider fallback/recovery paths are in place |
+| 16 | Provider/model registry evolution | IMPLEMENTED; typed provider capability/factory boundaries are in place |
 | 17 | Security/locality hardening | COMPLETE; filesystem/symlink containment, manifest validation, loopback serving, local Ollama enforcement, and security regression coverage hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job/UI-polling/structured-output/progress-UI/security tests added; CLI mypy compatibility, read-only CI workflow, schema-aware Director fixtures, video-QA-isolated media tests, Ruff-formatted polling fixtures, and media-job formatter normalization hardened |
-| 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
-| 20 | Persistence/schema migrations | PLANNED |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability tests added; hardware acceptance remains outside CI |
+| 19 | Observability/operational diagnostics | IMPLEMENTED; bounded in-process counters and duration summaries added without network telemetry |
+| 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media |
 | 21 | M4 resource/performance optimization | IN PROGRESS; memory-efficient ML inference controls and acceptance resource measurements added |
-| 22 | V1 production gate | PLANNED |
+| 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added |
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phase 17 security/locality hardening is complete. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Director structured generation now passes the exact Pydantic JSON Schema to Ollama for both initial generation and bounded repair attempts. The dashboard now has a visible operation loader, refreshes project/scene state when a media job reaches a terminal state, uses a dedicated final-video readiness endpoint, and shows determinate planning/media progress bars. Media progress reflects completed scenes; planning progress is intentionally state-based (queued 0%, running 60%, completed 100%) until the planning backend exposes stage counts. Successful background media jobs now continue through timeline generation, subtitles, deterministic FFmpeg rendering, and final QA so the workflow does not stop at `assets_ready`. Media jobs now also ensure every narrated scene has a real, non-silent macOS TTS artifact before rendering; existing silent/missing audio is regenerated, and the macOS TTS provider rejects an entirely silent PCM result immediately. The image extra now explicitly installs Accelerate so Diffusers can use its lower-memory loading path on the target machine. Diffusers image and LTX inference now use `torch.inference_mode()`, capability-gated attention/VAE slicing and VAE tiling, and explicit post-generation cache/reference cleanup to reduce peak and retained accelerator memory. FFmpeg and FFprobe subprocesses now receive a sanitized macOS environment without malloc stack-logging variables, removing the repeated `MallocStackLogging` diagnostics seen during finalization. CI regression fixtures now distinguish real provider identities, isolate orchestration tests from FFprobe while retaining FFprobe as the production video-quality gate, and remain Ruff-format compliant. The media-job orchestration module is normalized to the formatter version resolved by CI. Deterministic evaluation now also scores narration-to-visual lexical alignment and image-prompt-to-motion-prompt storyboard consistency, while remaining explicitly non-visual. Target-machine acceptance now records peak process RSS and process CPU seconds alongside wall-clock stage timings and before/after memory/disk snapshots. Phase 17 now centralizes project-relative path resolution so traversal, absolute external paths, and symlink escapes are rejected consistently; HTTP artifact endpoints validate typed manifests, project ownership, expected artifact type, and safe file containment before serving media; and Ollama explicitly rejects remote, credential-bearing, or non-HTTP endpoints.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
-## Phase 13 — Target-machine acceptance harness
-
-`app/acceptance.py` provides local-only/platform/tool/model readiness checks, MPS readiness, model-load timing, real scene image/video generation timing, before/after resource snapshots, deterministic project QA, final FFmpeg render/final QA, and a machine-readable JSON report. It now additionally records peak process RSS and process CPU seconds for evidence-driven performance analysis.
-
-```bash
-uv run video-agent acceptance --no-media
-uv run video-agent acceptance --project-id <PROJECT_ID>
-uv run video-agent acceptance --project-id <PROJECT_ID> --report data/acceptance-report.json
-```
-
-`--no-media` is readiness-only. Full acceptance executes actual local model inference on the target M4.
-
 ## Phase 14 — Semantic / visual evaluation
 
-`app/evaluation.py` adds a deterministic baseline for project-prompt lexical alignment, adjacent-scene lexical continuity, visual-description-to-narration lexical alignment, and image-prompt-to-motion-prompt storyboard consistency. It requires hard deterministic QA to pass and writes `evaluation-report.json` separately from integrity QA. These metrics are lexical heuristics only and are not represented as visual understanding.
+`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding.
 
-Remaining work is local image/scene semantic evaluation, I2V motion quality, stronger visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
+Remaining work is true local image/scene semantic evaluation, I2V motion quality, stronger visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
 
 ## Phase 17 — Security/locality hardening
 
-Security hardening is complete. `FilesystemStore.resolve_path()` and `project_path()` now provide a single containment boundary that resolves symlinks before checking containment, rejecting parent traversal, absolute paths outside the project, symlink escapes, and missing required files. The FFmpeg renderer uses this centralized resolver for every persisted media artifact. HTTP media endpoints now validate `Artifact` manifests, verify project ownership and expected artifact type, and resolve the final file through the same containment boundary before serving it. Subtitle and final-video paths also use the safe project resolver. The web application remains explicitly loopback-bound to `127.0.0.1`, and the Ollama provider accepts only HTTP endpoints on `127.0.0.1`, `localhost`, or `::1` without embedded credentials. Regression tests cover filesystem traversal, absolute-path escape, symlink escape, required-file handling, local HTTP health behavior, and remote/credential-bearing/non-HTTP Ollama endpoints.
+Security hardening is complete. `FilesystemStore.resolve_path()` and `project_path()` provide the containment boundary; media endpoints validate typed manifests, ownership and artifact types; loopback serving and Ollama endpoint validation enforce locality; subprocess invocation remains argv-based without shell execution; and security regression tests cover traversal, symlink, endpoint and manifest boundaries.
 
-The remaining items previously listed for this phase are now covered by existing architecture controls or regression coverage: subprocess invocation is argv-based without shell execution, FFmpeg/FFprobe environments are sanitized, provider construction is local-only, HTTP inputs use bounded Pydantic validation, and secrets are not part of persisted project contracts. Dependency/security scanning and broader threat-model maintenance continue as part of Phase 18/22 production-gate work rather than blocking the completed locality boundary.
+## Phase 19 — Observability / operational diagnostics
 
-## Phase 18 — Testing and CI/CD
+`app/observability.py` provides bounded in-process counters, duration observations, timer context management, and serializable summaries. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
 
-Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, demand-driven media-job image-provider initialization, browser dashboard polling regression, schema-constrained Director generation/repair, dashboard progress UI, filesystem/symlink security boundaries, and local Ollama endpoint enforcement. The dashboard regression prevents `pollJob()` from calling `refreshJobs()` on every tick, which previously multiplied polling loops and produced excessive repeated `/api/jobs` and `/api/projects/.../jobs` requests. Structured-output tests verify that the provider receives the exact Pydantic schema on both initial and repair calls. The strict mypy job is unblocked for the existing Typer `click_type` overload incompatibility in `app.cli`, and CI no longer writes formatting commits back to the repository or races with concurrent pushes. Director resume fixtures now select responses from the requested JSON schema, media orchestration tests mock only the FFprobe boundary so malformed fake bytes cannot mask production QA, the polling regression test is kept Ruff-format compliant, and the media-job module is aligned with the Ruff formatter actually resolved by CI. Continue expanding provider contract, failure-injection, dependency scanning, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
+## Phase 20 — Persistence / schema migrations
+
+`app/storage/migrations.py` provides an idempotent filesystem migration entry point. Legacy `project.json` manifests are upgraded to schema `1.1` atomically while generated media remains untouched. Re-running the migration is a no-op.
 
 ## Phase 21 — M4 resource/performance optimization
 
-The ML providers now reduce inference memory pressure without changing model weights: attention slicing, VAE slicing, and VAE tiling are enabled only when supported by the loaded Diffusers pipeline; inference runs under `torch.inference_mode()`; temporary outputs are explicitly released; and Python/accelerator caches are collected after each generation. This is designed for the M4 / 36 GB unified-memory target while retaining the existing conservative single-media-job concurrency. Acceptance now measures peak process RSS and process CPU seconds in addition to stage wall-clock timings and before/after resource snapshots. These measurements provide a baseline for real-M4 optimization; CPU/GPU utilization, sustained thermal behavior, and model-specific latency still require target-machine runs and must not be inferred from CI.
+The ML providers reduce inference memory pressure through capability-gated attention/VAE slicing and tiling, `torch.inference_mode()`, explicit temporary reference release, and accelerator/Python cache cleanup. Acceptance records peak process RSS, CPU seconds, stage wall-clock timings, and before/after resource snapshots. CPU/GPU utilization, sustained thermal behavior, and model-specific latency still require target-machine runs.
 
-## Phases 15–16, 19–20, 22–24
+## Phase 22 — V1 production gate
 
-Use real failure data for advanced bounded recovery/refinement; formalize provider/model profiles; complete observability and schema evolution; then enforce the V1 production gate before V2/V3 expansion.
+`app/production_gate.py` evaluates a persisted project against the local-only policy, schema version, storage security audit, deterministic media QA, and semantic baseline. It produces a machine-readable gate report and does not claim target-hardware acceptance; the real M4 acceptance command remains the hardware gate.
 
 ## Definition of done
 
