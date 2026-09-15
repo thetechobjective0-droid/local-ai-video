@@ -42,8 +42,9 @@ def collect_environment_report(store: FilesystemStore, project_id: UUID | None =
     start = time.perf_counter_ns()
     resources = snapshot(store.root)
     measurements = (
-        BenchmarkMeasurement("available_memory", resources.available_memory_bytes, "bytes"),
-        BenchmarkMeasurement("memory_pressure", float(resources.memory_pressure), "ratio"),
+        BenchmarkMeasurement("total_memory", float(resources.total_memory_bytes), "bytes"),
+        BenchmarkMeasurement("available_memory", float(resources.available_memory_bytes), "bytes"),
+        BenchmarkMeasurement("free_disk", float(resources.free_disk_bytes), "bytes"),
         BenchmarkMeasurement("collector_overhead", float(time.perf_counter_ns() - start), "ns"),
     )
     report = BenchmarkReport(
@@ -51,11 +52,16 @@ def collect_environment_report(store: FilesystemStore, project_id: UUID | None =
         created_at_ns=time.time_ns(),
         machine=platform.platform(),
         measurements=measurements,
-        metadata={"project_id": str(project_id) if project_id else None, "python": platform.python_version()},
+        metadata={
+            "project_id": str(project_id) if project_id else None,
+            "python": platform.python_version(),
+        },
     )
     path = store.root / "benchmarks"
     path.mkdir(parents=True, exist_ok=True)
-    (path / f"{report.id}.json").write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
+    (path / f"{report.id}.json").write_text(
+        json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8"
+    )
     return report
 
 
