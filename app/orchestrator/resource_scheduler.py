@@ -5,8 +5,9 @@ from __future__ import annotations
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from threading import Condition
-from typing import Iterator
+from typing import Callable, Iterator
 
+from app.orchestrator.cancellation import JobCancellationRequested
 from app.orchestrator.media_strategy import VideoCapability
 from app.preflight import snapshot
 from app.storage.filesystem import FilesystemStore
@@ -63,36 +64,28 @@ class ResourceScheduler:
         self,
         job_id: str,
         capability: VideoCapability,
+        *,
+        cancelled: Callable[[], bool] | None = None,
     ) -> AbstractContextManager[ResourceReservation]:
-        """Block until the provider's memory class can be admitted safely."""
-        memory_class = (
-            capability.memory_class if capability.memory_class in {"low", "high"} else "low"
-        )
+        """Block until memory class can be admitted safely or cancellation is requested."""
+        memory_class = capability.memory_class if capability.memory_class in {"low", "high"} else "low"
         required = self.high_reservation_gib if memory_class == "high" else self.low_reservation_gib
         while True:
+            if cancelled is not None and cancelled():
+                raise JobCancellationRequested(f"job {job_id} cancellation requested while queued")
             resources = snapshot(self.store.root)
             available_gib = resources.available_memory_bytes / (1024**3)
             with self._condition:
-                high_active = sum(
-                    item.memory_class == "high" for item in self._reservations.values()
-                )
+                high_active = sum(item.memory_class == "high" for item in self._reservations.values())
                 reserved = sum(item.reserved_memory_gib for item in self._reservations.values())
                 capacity_ok = available_gib >= required + self.memory_headroom_gib
-                reservation_ok = reserved + required <= max(
-                    required,
-                    available_gib - self.memory_headroom_gib,
-                )
+                reservation_ok = reserved + required <= max(required, available_gib - self.memory_headroom_gib)
                 high_ok = memory_class != "high" or high_active < self.max_high_concurrency
                 if capacity_ok and reservation_ok and high_ok and job_id not in self._reservations:
-                    reservation = ResourceReservation(
-                        job_id=job_id,
-                        memory_class=memory_class,
-                        reserved_memory_gib=required,
-                        available_memory_gib=available_gib,
-                    )
+                    reservation = ResourceReservation(job_id=job_id, memory_class=memory_class, reserved_memory_gib=required, available_memory_gib=available_gib)
                     self._reservations[job_id] = reservation
                     return _Reservation(self, reservation)
-                self._condition.wait(timeout=1.0)
+                self._condition.wait(timeout=0.5)
 
     def release(self, reservation: ResourceReservation) -> None:
         """Release a prior reservation and wake queued jobs."""
