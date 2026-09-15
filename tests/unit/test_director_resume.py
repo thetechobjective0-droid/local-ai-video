@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from app.director.project import create_plan, resume_plan
 from app.models.project import ProjectStatus
