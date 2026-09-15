@@ -28,14 +28,14 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; cache/resource expansion remains |
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED; acceptance continues |
-| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED |
+| 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling behavior hardened |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
 | 14 | Semantic/visual evaluation | IN PROGRESS; deterministic semantic baseline added |
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job tests added |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job/UI-polling tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
 | 21 | M4 resource/performance optimization | PLANNED; depends on measurements |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, and media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted. This allows existing storyboard/image assets to proceed to media generation without requiring an unused SDXL model directory.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted, and the browser dashboard no longer creates a second media-job polling loop from inside each polling tick. Active media jobs are now polled through a single 3-second status loop, while the jobs list is refreshed only when entering the detail view, explicitly starting a job, or when the job reaches a terminal state.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -75,7 +75,7 @@ Remaining work includes filesystem/symlink audit, prompt/manifest validation, su
 
 ## Phase 18 — Testing and CI/CD
 
-Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, and demand-driven media-job image-provider initialization. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
+Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, demand-driven media-job image-provider initialization, and browser dashboard polling regression. The dashboard regression prevents `pollJob()` from calling `refreshJobs()` on every tick, which previously multiplied polling loops and produced excessive repeated `/api/jobs` and `/api/projects/.../jobs` requests. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
 
 ## Phases 15–16, 19–24
 
