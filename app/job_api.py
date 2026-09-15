@@ -1,9 +1,10 @@
 """HTTP routes for local background jobs."""
 
+from dataclasses import asdict
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.config import load_config
@@ -12,6 +13,7 @@ from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus, VideoProject
 from app.models.scene import Scene
+from app.orchestrator.events import JobEventLog
 from app.orchestrator.jobs import MediaJobManager, _finalize_project_media
 from app.orchestrator.regeneration import clear_scene_stage_outputs, invalidate_scene_dependencies
 from app.orchestrator.scheduled_jobs import get_scheduled_job_manager
@@ -113,6 +115,33 @@ def get_media_job(job_id: UUID) -> dict[str, Any]:
 @router.get("/api/projects/{project_id}/jobs")
 def list_media_jobs(project_id: UUID) -> list[dict[str, Any]]:
     return [job.model_dump(mode="json") for job in _manager().list(project_id)]
+
+
+@router.get("/api/projects/{project_id}/events")
+def list_project_events(project_id: UUID, limit: int = Query(default=200, ge=1, le=5000)) -> list[dict[str, Any]]:
+    """Return recent structured lifecycle events for dashboard diagnostics."""
+    try:
+        _store().load_project(project_id)
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="project not found") from None
+    return [event.to_dict() for event in JobEventLog(_store().root, project_id).read(limit=limit)]
+
+
+@router.get("/api/projects/{project_id}/resources")
+def project_resources(project_id: UUID) -> dict[str, Any]:
+    """Expose active local memory reservations for the project."""
+    store = _store()
+    try:
+        store.load_project(project_id)
+    except (OSError, ValueError):
+        raise HTTPException(status_code=404, detail="project not found") from None
+    reservations = [
+        asdict(reservation)
+        for reservation in _manager().resource_snapshot()
+        if getattr(reservation, "job_id", None)
+        in {str(job.id) for job in _manager().list(project_id)}
+    ]
+    return {"reservations": reservations}
 
 
 @router.post("/api/projects/{project_id}/scenes/{scene_id}/regenerate")
