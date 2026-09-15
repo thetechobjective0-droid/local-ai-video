@@ -40,26 +40,26 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
 | 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
-| 23 | V2 advanced production features | IN PROGRESS; implementation scope and acceptance criteria defined; reproducibility manifest foundation added |
+| 23 | V2 advanced production features | IN PROGRESS; reproducibility and artifact-integrity foundations implemented |
 | 24 | V3 platform evolution/research | PLANNED; implementation scope and acceptance criteria defined |
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 23 is now in progress with its implementation contract documented and reproducibility metadata primitives added. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
-
-The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
-
-Ruff 0.16.7 formatting is normalized across the previously failing application files; CI remains the authoritative execution path for lint, type checking, and tests. CI does not auto-commit formatting changes.
+Phases 0–22 have implementation coverage. Phase 23 is now in progress with reproducibility and artifact-integrity foundations. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
 
 ## Phase 23 — V2 Advanced Production Features
 
-The detailed implementation contract is in `docs/phase-23-24.md`. The first foundation is `app/generation/reproducibility.py`, which captures immutable project/provider/model/parameter inputs and a deterministic fingerprint for future generation manifests, export/import, checkpointing, and benchmark comparison.
+The detailed contract is in `docs/phase-23-24.md`.
 
-Next V2 implementation increments should build on this foundation: artifact integrity manifests, project export/import, dependency-aware resumable orchestration, scene-level regeneration, resource-aware scheduling, structured event history, advanced evaluation/refinement, and corresponding dashboard controls.
+Implemented foundations:
+- `app/generation/reproducibility.py`: immutable project/provider/model/parameter capture and deterministic fingerprinting.
+- `app/storage/integrity.py`: SHA-256 artifact manifests, size tracking, project-relative containment checks, atomic persistence, and verification.
+
+Next increments: project export/import, dependency-aware resumable orchestration, scene-level regeneration, resource-aware scheduling, structured event history, advanced evaluation/refinement, and dashboard controls.
 
 ## Phase 24 — V3 Platform Evolution / Research
 
-The detailed implementation contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after the Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
+The detailed contract is in `docs/phase-23-24.md`. Phase 24 remains sequenced after Phase 23 provider/job extension points are stable. Its scope includes versioned provider capabilities, local benchmark/experiment reports, model compatibility discovery, multimodal/local evaluation research, performance experiments, and migration-safe platform evolution.
 
 ## Definition of done
 
