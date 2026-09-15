@@ -8,7 +8,7 @@ from threading import Condition
 from typing import Iterator
 
 from app.orchestrator.media_strategy import VideoCapability
-from app.preflight import ResourceSnapshot, snapshot
+from app.preflight import snapshot
 from app.storage.filesystem import FilesystemStore
 
 
@@ -65,7 +65,9 @@ class ResourceScheduler:
         capability: VideoCapability,
     ) -> AbstractContextManager[ResourceReservation]:
         """Block until the provider's memory class can be admitted safely."""
-        memory_class = capability.memory_class if capability.memory_class in {"low", "high"} else "low"
+        memory_class = (
+            capability.memory_class if capability.memory_class in {"low", "high"} else "low"
+        )
         required = self.high_reservation_gib if memory_class == "high" else self.low_reservation_gib
         while True:
             resources = snapshot(self.store.root)
