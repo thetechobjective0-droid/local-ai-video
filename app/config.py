@@ -48,20 +48,22 @@ class VideoConfig(BaseModel):
     # LTX-2.3 MLX is the production M4 path: temporal video plus native audio.
     # The older PyTorch LTX-Video provider remains available when explicitly selected.
     provider: str = "ltx2_mlx"
-    model_path: Path | None = Path("./data/models/LTX-Video")
-    engine_path: Path = Path("./data/runtime/ltx-video-mlx")
+    model_path: Path = Path("./data/models/ltx-2.3-mlx-q8")
+    engine_path: Path = Path("./data/runtime/ltx-2-mlx")
     uv_command: str = "uv"
+    low_ram: bool = True
+    pipeline: Literal["two-stage", "two-stages-hq", "one-stage", "distilled"] = "two-stage"
     bits: Literal[4, 8] = 8
     native_audio: bool = True
     i2v_strength: float = Field(default=0.95, ge=0, le=1)
     allow_fallback: bool = False
     device: str = Field(default="mps", pattern="^(mps|cpu)$")
     dtype: str = Field(default="float16", pattern="^(float16|bfloat16|float32)$")
-    width: int = Field(default=768, ge=64, multiple_of=32)
-    height: int = Field(default=512, ge=64, multiple_of=32)
-    fps: int = Field(default=25, ge=1, le=60)
+    width: int = Field(default=704, ge=64, multiple_of=32)
+    height: int = Field(default=480, ge=64, multiple_of=32)
+    fps: int = Field(default=24, ge=1, le=60)
     inference_steps: int = Field(default=8, ge=1, le=100)
-    guidance_scale: float = Field(default=1.0, ge=0, le=20)
+    guidance_scale: float = Field(default=3.0, ge=0, le=20)
     guidance_rescale: float = Field(default=0.0, ge=0, le=1)
     image_cond_noise_scale: float = Field(default=0.025, ge=0, le=1)
     decode_timestep: float = Field(default=0.05, ge=0, le=1)
