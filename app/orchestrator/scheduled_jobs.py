@@ -9,7 +9,7 @@ from uuid import UUID
 from app.config import load_config
 from app.orchestrator.events import append_job_event
 from app.orchestrator.jobs import MediaJob, MediaJobManager
-from app.orchestrator.resource_scheduler import ResourceScheduler
+from app.orchestrator.resource_scheduler import ResourceReservation, ResourceScheduler
 from app.providers.capabilities import get_provider_capabilities
 from app.storage.filesystem import FilesystemStore
 
@@ -84,7 +84,7 @@ class ScheduledMediaJobManager(MediaJobManager):
         )
         logger.info("[media] scheduler RELEASE job=%s", job_id)
 
-    def resource_snapshot(self) -> tuple[object, ...]:
+    def resource_snapshot(self) -> tuple[ResourceReservation, ...]:
         """Return active scheduler reservations for local diagnostics."""
         return self._resource_scheduler.active()
 
