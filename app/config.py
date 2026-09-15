@@ -51,6 +51,12 @@ class VideoConfig(BaseModel):
     width: int = Field(default=704, ge=64, multiple_of=32)
     height: int = Field(default=384, ge=64, multiple_of=32)
     fps: int = Field(default=16, ge=1, le=60)
+    inference_steps: int = Field(default=40, ge=1, le=100)
+    guidance_scale: float = Field(default=3.0, ge=0, le=20)
+    guidance_rescale: float = Field(default=0.0, ge=0, le=1)
+    image_cond_noise_scale: float = Field(default=0.025, ge=0, le=1)
+    decode_timestep: float = Field(default=0.05, ge=0, le=1)
+    decode_noise_scale: float | None = Field(default=0.025, ge=0, le=1)
 
 
 class StorageConfig(BaseModel):
