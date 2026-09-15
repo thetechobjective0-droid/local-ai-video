@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 import tarfile
@@ -40,8 +41,6 @@ def export_project(store: FilesystemStore, project_id: UUID | str, destination: 
     with tempfile.TemporaryDirectory(prefix="video-export-") as temp_dir:
         temp_root = Path(temp_dir) / source.name
         shutil.copytree(source, temp_root, symlinks=False)
-        manifest = build_integrity_manifest(temp_root, _manifest_files(temp_root))
-        write_integrity_manifest(temp_root / "integrity-manifest.json", manifest)
         marker = temp_root / "archive.json"
         marker.write_text(
             '{\n  "archive_version": "1.0",\n  "integrity_manifest": "integrity-manifest.json"\n}\n',
@@ -55,13 +54,13 @@ def export_project(store: FilesystemStore, project_id: UUID | str, destination: 
 
 
 def _safe_extract(archive: tarfile.TarFile, destination: Path) -> None:
-    """Extract tar members safely on Python versions without TarFile filters."""
+    """Extract tar members safely on Python 3.11 and newer."""
     for member in archive.getmembers():
         target = (destination / member.name).resolve()
         if target != destination and destination not in target.parents:
             raise ValueError("archive member escapes extraction root")
-        if member.issym() or member.islnk():
-            raise ValueError("archive links are not permitted")
+        if member.issym() or member.islnk() or member.isdev():
+            raise ValueError("archive links and device files are not permitted")
         archive.extract(member, destination)
 
 
@@ -86,7 +85,11 @@ def import_project(store: FilesystemStore, archive_path: Path, project_id: UUID 
         manifest = root / "integrity-manifest.json"
         if not manifest.is_file():
             raise ValueError("project integrity manifest is missing")
-        failures = verify_integrity_manifest(root, __import__("json").loads(manifest.read_text(encoding="utf-8")))
+        try:
+            manifest_data = json.loads(manifest.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ValueError("project integrity manifest is invalid") from exc
+        failures = verify_integrity_manifest(root, manifest_data)
         if failures:
             raise ValueError("project integrity verification failed: " + "; ".join(failures))
         destination.parent.mkdir(parents=True, exist_ok=True)
