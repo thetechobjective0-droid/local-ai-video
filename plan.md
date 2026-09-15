@@ -35,7 +35,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 15 | Advanced recovery/refinement | PLANNED |
 | 16 | Provider/model registry evolution | PLANNED |
 | 17 | Security/locality hardening | IN PROGRESS; renderer/job containment + restart recovery hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight tests added |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; acceptance/restart/evaluation/preflight/media-job tests added |
 | 19 | Observability/operational diagnostics | PARTIALLY IMPLEMENTED |
 | 20 | Persistence/schema migrations | PLANNED |
 | 21 | M4 resource/performance optimization | PLANNED; depends on measurements |
@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The immediate runtime blocker reported on the target Mac was an `os.sysconf("SC_AVPHYS_PAGES")` failure; `app/preflight.py` now treats unsupported `sysconf` keys as a platform case and falls back to macOS `sysctl` data rather than crashing the media worker.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Security and CI expansion remain active. The target Mac runtime now has macOS-safe memory probing, and media-only jobs no longer initialize the Diffusers image provider when all scene images are already persisted. This allows existing storyboard/image assets to proceed to media generation without requiring an unused SDXL model directory.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -75,7 +75,7 @@ Remaining work includes filesystem/symlink audit, prompt/manifest validation, su
 
 ## Phase 18 — Testing and CI/CD
 
-Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, and macOS resource probing. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
+Tests cover deterministic application boundaries plus acceptance readiness/report contracts, planning restart recovery, semantic evaluation, macOS resource probing, and demand-driven media-job image-provider initialization. Continue expanding provider contract, failure-injection, security, migration, and deterministic end-to-end tests. Hardware acceptance remains outside standard model-free CI.
 
 ## Phases 15–16, 19–24
 
