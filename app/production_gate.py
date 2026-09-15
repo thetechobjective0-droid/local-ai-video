@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+import json
 from pathlib import Path
-from typing import Callable
 from uuid import UUID
 
+from app.config import AppConfig
 from app.evaluation import evaluate_project
-from app.models.project import VideoProject
 from app.qa.project import validate_project
 from app.security import audit_tree, local_only_findings
 from app.storage.filesystem import FilesystemStore
@@ -38,18 +38,17 @@ class ProductionGateReport:
 def run_production_gate(
     store: FilesystemStore,
     project_id: UUID,
-    *,
-    command_available: Callable[[str], bool] | None = None,
+    config: AppConfig | None = None,
 ) -> ProductionGateReport:
     """Require locality, storage security, deterministic QA and semantic baseline pass."""
+    config = config or AppConfig()
     checks: list[GateCheck] = []
-    project = store.load_project(project_id)
-    checks.append(GateCheck("schema", project.schema_version == "1.1", project.schema_version))
+    checks.append(GateCheck("local_only", config.runtime.local_only, "local_only must remain enabled"))
+    checks.append(GateCheck("schema", store.load_project(project_id).schema_version == "1.1", "project schema"))
+    endpoints = [config.llm.base_url]
     checks.extend(
-        GateCheck(finding.name, finding.passed, finding.detail)
-        for finding in local_only_findings(
-            "http://127.0.0.1:11434", "http://localhost:11434"
-        )
+        GateCheck(f"{finding.name}:{index}", finding.passed, finding.detail)
+        for index, finding in enumerate(local_only_findings(*endpoints), start=1)
     )
     checks.extend(
         GateCheck(finding.name, finding.passed, finding.detail)
@@ -57,7 +56,11 @@ def run_production_gate(
     )
     qa = validate_project(store, project_id)
     checks.append(
-        GateCheck("deterministic_qa", qa.passed, "QA PASS" if qa.passed else "; ".join(f.message for f in qa.failures))
+        GateCheck(
+            "deterministic_qa",
+            qa.passed,
+            "QA PASS" if qa.passed else "; ".join(f.message for f in qa.failures),
+        )
     )
     evaluation = evaluate_project(store, project_id)
     checks.append(
@@ -72,8 +75,6 @@ def run_production_gate(
 
 def write_gate_report(report: ProductionGateReport, path: Path) -> Path:
     """Persist a production-gate report."""
-    import json
-
     path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report.to_dict(), indent=2) + "\n", encoding="utf-8")
