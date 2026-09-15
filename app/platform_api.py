@@ -7,7 +7,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import load_config
-from app.platform.benchmarks import collect_environment_report, list_benchmark_reports
+from app.platform.benchmarks import (
+    collect_environment_report,
+    compare_reports,
+    list_benchmark_reports,
+)
 from app.platform.experiments import ExperimentManifest, ExperimentResult, read_experiment, write_experiment
 from app.platform.registry import compatible_video_providers, list_providers, provider
 from app.providers.capabilities import get_provider_capabilities
@@ -58,6 +62,16 @@ def benchmark_history() -> list[dict[str, object]]:
     return list_benchmark_reports(_store().root)
 
 
+@router.get("/api/platform/benchmarks/compare/{baseline_id}/{candidate_id}")
+def benchmark_compare(baseline_id: UUID, candidate_id: UUID) -> dict[str, object]:
+    reports = {item.get("id"): item for item in list_benchmark_reports(_store().root)}
+    baseline = reports.get(str(baseline_id))
+    candidate = reports.get(str(candidate_id))
+    if not isinstance(baseline, dict) or not isinstance(candidate, dict):
+        raise HTTPException(status_code=404, detail="benchmark report not found")
+    return compare_reports(baseline, candidate)
+
+
 @router.post("/api/platform/experiments")
 def create_experiment(request: ExperimentRequest) -> dict[str, object]:
     manifest = ExperimentManifest(
@@ -83,15 +97,21 @@ def complete_experiment(
     store = _store()
     try:
         payload = read_experiment(store.root, experiment_id)
-        raw_manifest = payload["manifest"]
-        if not isinstance(raw_manifest, dict):
-            raise ValueError("invalid experiment manifest")
     except (OSError, ValueError, KeyError):
         raise HTTPException(status_code=404, detail="experiment not found") from None
-    manifest = ExperimentManifest.model_validate(raw_manifest)
-    result = ExperimentResult(experiment_id=experiment_id, status=status, measurements=measurements or {}, notes=notes)
+    manifest = ExperimentManifest.model_validate(payload["manifest"])
+    result = ExperimentResult(
+        experiment_id=experiment_id,
+        status=status,
+        measurements=measurements or {},
+        notes=notes,
+    )
     path = write_experiment(store.root, manifest, result)
-    return {"experiment_id": str(experiment_id), "result": result.model_dump(mode="json"), "path": str(path)}
+    return {
+        "experiment_id": str(experiment_id),
+        "result": result.model_dump(mode="json"),
+        "path": str(path),
+    }
 
 
 @router.get("/api/platform/experiments/{experiment_id}")
