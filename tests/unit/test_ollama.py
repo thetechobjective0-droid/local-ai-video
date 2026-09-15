@@ -54,3 +54,18 @@ def test_ollama_require_model_rejects_missing_model() -> None:
     ):
         with pytest.raises(ProviderUnavailableError, match="not installed locally"):
             OllamaProvider().require_model("qwen2.5-coder:32b")
+
+
+def test_ollama_rejects_remote_endpoint() -> None:
+    with pytest.raises(ValueError, match="localhost"):
+        OllamaProvider("http://example.com:11434")
+
+
+def test_ollama_rejects_credentials_in_endpoint() -> None:
+    with pytest.raises(ValueError, match="credentials"):
+        OllamaProvider("http://user:password@127.0.0.1:11434")
+
+
+def test_ollama_rejects_https_endpoint() -> None:
+    with pytest.raises(ValueError, match="localhost"):
+        OllamaProvider("https://127.0.0.1:11434")
