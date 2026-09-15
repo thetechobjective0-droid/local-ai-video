@@ -26,21 +26,28 @@ tts:
   sample_rate: 22050
 
 video:
-  # Use real local AI image-to-video for high-quality motion.
-  provider: ltx_video
-  model_path: ./data/models/LTX-Video
-  device: mps
-  dtype: float16
-  width: 704
-  height: 480
-  fps: 24
-  inference_steps: 40
-  guidance_scale: 3.0
+  # Real temporal AI video + synchronized native audio on Apple Silicon.
+  provider: ltx2_mlx
+  engine_path: ./data/runtime/ltx-video-mlx
+  uv_command: uv
+  bits: 8
+  native_audio: true
+  i2v_strength: 0.95
+  allow_fallback: false
+  width: 768
+  height: 512
+  fps: 25
+  # LTX-2 MLX uses an 8-step distilled runtime; the remaining fields are
+  # retained for compatibility with the PyTorch LTX-Video provider.
+  inference_steps: 8
+  guidance_scale: 1.0
   guidance_rescale: 0.0
   image_cond_noise_scale: 0.025
   decode_timestep: 0.05
   decode_noise_scale: 0.025
-  # Deterministic FFmpeg motion remains available as a fallback.
+  # Explicit alternatives:
+  # provider: ltx_video
+  # model_path: ./data/models/LTX-Video
   # provider: ffmpeg_ken_burns
 
 storage:
