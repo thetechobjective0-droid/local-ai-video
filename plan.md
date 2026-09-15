@@ -49,7 +49,7 @@ Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. P
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
-The latest CI formatting regression is being normalized against Ruff 0.16.7 before the next full CI validation; no formatter auto-commit is used in CI.
+The latest CI formatting regression is being normalized against Ruff 0.16.7 before the next full CI validation; no formatter auto-commit is used in CI. Evaluation and production-gate formatting has now been normalized; FFmpeg formatting has also been normalized.
 
 ## Phase 14 — Semantic / visual evaluation
 
