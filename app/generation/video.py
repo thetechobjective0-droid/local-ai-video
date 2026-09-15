@@ -50,6 +50,46 @@ def _effective_motion_prompt(scene: Scene) -> str:
     return (base + quality).strip() if base else quality.strip()
 
 
+def _persist_native_audio(
+    store: FilesystemStore,
+    project_id: UUID,
+    scene: Scene,
+    metadata: dict[str, object],
+) -> Scene:
+    """Persist provider-generated synchronized audio as the scene's audio artifact."""
+    value = metadata.get("native_audio_path")
+    if not isinstance(value, str) or not value:
+        return scene
+    directory = store.project_dir(project_id).resolve()
+    audio_path = Path(value).expanduser()
+    if not audio_path.is_absolute():
+        audio_path = (directory / audio_path).resolve()
+    else:
+        audio_path = audio_path.resolve()
+    if directory not in audio_path.parents or not audio_path.is_file() or audio_path.stat().st_size == 0:
+        raise VideoAgentError("video provider reported native audio, but the audio artifact is missing")
+    digest = hashlib.sha256(audio_path.read_bytes()).hexdigest()
+    artifact = Artifact(
+        project_id=project_id,
+        scene_id=scene.id,
+        type="scene_audio",
+        path=audio_path,
+        mime="audio/wav",
+        provider=str(metadata.get("provider", "ltx2_mlx")),
+        model=str(metadata.get("model", "LTX-2.3-22B-MLX")),
+        sha256=digest,
+        parameters={
+            "generation_mode": "native_synchronized_audio",
+            "video_generation_mode": "ai_i2v",
+            "sample_rate": 48000,
+            "channels": 2,
+            "sha256": digest,
+        },
+    )
+    store.write_json(directory, f"scene-{scene.index:04d}-audio.json", artifact.model_dump(mode="json"))
+    return scene.model_copy(update={"audio_asset": artifact.id})
+
+
 def generate_scene_video(
     provider: VideoProvider,
     store: FilesystemStore,
@@ -103,7 +143,7 @@ def generate_scene_video(
     model_name = getattr(provider, "model_name", getattr(provider, "_model_name", "unknown"))
     effective_prompt = _effective_motion_prompt(scene)
     generation_key = cache_key(
-        "scene-video-v3",
+        "scene-video-v4",
         {
             "image_sha256": image_sha256,
             "provider": provider_name,
@@ -128,9 +168,8 @@ def generate_scene_video(
     cached = _load_cached_video(video_manifest, generation_key)
     if cached is not None:
         updated_scene = scene.model_copy(update={"video_asset": cached.id, "status": "ready"})
-        store.write_json(
-            directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json")
-        )
+        updated_scene = _persist_native_audio(store, project_id, updated_scene, cached.parameters)
+        store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
         return cached, updated_scene
 
     videos_dir = directory / "videos"
@@ -146,6 +185,7 @@ def generate_scene_video(
             fps=fps,
             seed=seed,
             metadata={
+                "project_root": str(directory),
                 "scene_id": str(scene.id),
                 "scene_index": scene.index,
                 "width": width,
@@ -168,10 +208,12 @@ def generate_scene_video(
         raise VideoAgentError("video provider returned invalid video metadata")
 
     generation_mode = result.metadata.get("generation_mode")
-    if provider_name == "ltx_video" and generation_mode != "ai_i2v":
+    if provider_name in {"ltx_video", "ltx2_mlx"} and generation_mode != "ai_i2v":
         raise VideoAgentError(
-            "LTX provider did not return an artifact marked as real temporal image-to-video"
+            "AI video provider did not return an artifact marked as real temporal image-to-video"
         )
+    if provider_name == "ltx2_mlx" and result.metadata.get("temporal_generation") is not True:
+        raise VideoAgentError("LTX-2 MLX output did not confirm temporal frame generation")
     if provider_name == "ffmpeg_ken_burns" and generation_mode != "image_motion":
         raise VideoAgentError(
             "FFmpeg provider did not identify its output as deterministic image motion"
@@ -183,6 +225,7 @@ def generate_scene_video(
         expected_fps=result.fps,
         expected_resolution=(result.width, result.height),
     )
+    metadata = {**result.metadata, "provider": result.provider, "model": result.model}
     artifact = Artifact(
         project_id=project_id,
         scene_id=scene.id,
@@ -203,14 +246,11 @@ def generate_scene_video(
             "generation_mode": generation_mode,
             "cache_key": generation_key,
             "qa": qa,
-            **result.metadata,
+            **metadata,
         },
     )
-    store.write_json(
-        directory, f"scene-{scene.index:04d}-video.json", artifact.model_dump(mode="json")
-    )
+    store.write_json(directory, f"scene-{scene.index:04d}-video.json", artifact.model_dump(mode="json"))
     updated_scene = scene.model_copy(update={"video_asset": artifact.id, "status": "ready"})
-    store.write_json(
-        directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json")
-    )
+    updated_scene = _persist_native_audio(store, project_id, updated_scene, artifact.parameters)
+    store.write_json(directory, f"scene-{scene.index:04d}.json", updated_scene.model_dump(mode="json"))
     return artifact, updated_scene
