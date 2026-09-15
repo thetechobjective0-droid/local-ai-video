@@ -12,8 +12,9 @@ from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus, VideoProject
 from app.models.scene import Scene
-from app.orchestrator.jobs import MediaJobManager, _finalize_project_media, get_job_manager
+from app.orchestrator.jobs import MediaJobManager, _finalize_project_media
 from app.orchestrator.regeneration import clear_scene_stage_outputs, invalidate_scene_dependencies
+from app.orchestrator.scheduled_jobs import get_scheduled_job_manager
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_provider
 from app.providers.macos_tts import MacOSTTSProvider
@@ -46,7 +47,7 @@ def _store() -> FilesystemStore:
 
 
 def _manager() -> MediaJobManager:
-    return get_job_manager(_store())
+    return get_scheduled_job_manager(_store())
 
 
 def _planning_manager():
