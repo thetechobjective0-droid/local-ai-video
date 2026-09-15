@@ -32,7 +32,7 @@ def test_model_readiness_reports_weights(tmp_path: Path) -> None:
     assert "1 weight files" in detail
 
 
-def test_acceptance_report_serializes_checks() -> None:
+def test_acceptance_report_serializes_checks_and_resource_metrics() -> None:
     report = AcceptanceReport(
         passed=True,
         platform="Darwin",
@@ -48,10 +48,14 @@ def test_acceptance_report_serializes_checks() -> None:
             "available_memory_bytes": 6,
             "free_disk_bytes": 6,
         },
+        peak_process_memory_bytes=5,
+        process_cpu_seconds=1.25,
     )
 
     payload = report.to_dict()
 
-    assert payload["report_version"] == "1.0"
+    assert payload["report_version"] == "1.1"
     assert payload["passed"] is True
     assert payload["checks"][0]["name"] == "ffmpeg"
+    assert payload["peak_process_memory_bytes"] == 5
+    assert payload["process_cpu_seconds"] == 1.25
