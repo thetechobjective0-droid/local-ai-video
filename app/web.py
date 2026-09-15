@@ -23,6 +23,7 @@ from app.job_api import router as job_router
 from app.logging import configure_logging
 from app.models.artifact import Artifact
 from app.models.scene import Scene
+from app.platform_api import router as platform_router
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_provider
 from app.providers.macos_tts import MacOSTTSProvider
@@ -35,6 +36,7 @@ from app.web_ui import HTML
 app = FastAPI(title="Local AI Video", version="0.1.0")
 app.include_router(job_router)
 app.include_router(advanced_router)
+app.include_router(platform_router)
 logger = logging.getLogger(__name__)
 
 
@@ -74,16 +76,10 @@ def _scene(store: FilesystemStore, project_id: UUID, scene_id: UUID) -> Scene:
 
 
 def _persist_scene(store: FilesystemStore, project_id: UUID, scene: Scene) -> None:
-    store.write_json(
-        store.project_dir(project_id),
-        f"scene-{scene.index:04d}.json",
-        scene.model_dump(mode="json"),
-    )
+    store.write_json(store.project_dir(project_id), f"scene-{scene.index:04d}.json", scene.model_dump(mode="json"))
 
 
-def _artifact_manifest(
-    store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
-) -> tuple[Artifact, Path]:
+def _artifact_manifest(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[Artifact, Path]:
     scene = _scene(store, project_id, scene_id)
     manifest = store.project_dir(project_id) / f"scene-{scene.index:04d}-{suffix}.json"
     if not manifest.is_file():
@@ -104,22 +100,18 @@ def _artifact_manifest(
     return artifact, path
 
 
-def _artifact_path(
-    store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str
-) -> tuple[Path, str]:
+def _artifact_path(store: FilesystemStore, project_id: UUID, scene_id: UUID, suffix: str) -> tuple[Path, str]:
     artifact, path = _artifact_manifest(store, project_id, scene_id, suffix)
     return path, str(artifact.id)
 
 
 @app.get("/", response_class=HTMLResponse)
 def index() -> str:
-    logger.info("[web] GET /")
     return HTML
 
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    logger.info("[web] GET /api/health")
     return {"status": "ok", "mode": "local-only"}
 
 
@@ -127,18 +119,14 @@ def health() -> dict[str, str]:
 def projects() -> list[dict[str, Any]]:
     store = _store()
     result: list[dict[str, Any]] = []
-    for path in sorted(
-        (store.root / "projects").iterdir() if (store.root / "projects").exists() else []
-    ):
+    for path in sorted((store.root / "projects").iterdir() if (store.root / "projects").exists() else []):
         project_file = path / "project.json"
         if not path.is_dir() or not project_file.is_file():
             continue
         try:
-            project = store.load_project(path.name)
+            result.append(store.load_project(path.name).model_dump(mode="json"))
         except (OSError, ValueError):
             continue
-        result.append(project.model_dump(mode="json"))
-    logger.info("[web] GET /api/projects count=%s", len(result))
     return result
 
 
@@ -148,28 +136,20 @@ def project(project_id: UUID) -> dict[str, Any]:
     try:
         value = store.load_project(project_id)
     except (OSError, ValueError):
-        logger.warning("[web] project not found id=%s", project_id)
         raise HTTPException(status_code=404, detail="project not found") from None
-    directory = store.project_dir(project_id)
     scenes: list[dict[str, Any]] = []
-    for path in sorted(directory.glob("scene-*.json")):
+    for path in sorted(store.project_dir(project_id).glob("scene-*.json")):
         if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
-            scenes.append(
-                Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json")
-            )
+            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")).model_dump(mode="json"))
         except (OSError, ValueError):
             continue
-    logger.info(
-        "[web] GET project=%s scenes=%s status=%s", project_id, len(scenes), value.status.value
-    )
     return {"project": value.model_dump(mode="json"), "scenes": scenes}
 
 
 @app.post("/api/projects/{project_id}/resume")
 def resume(project_id: UUID) -> dict[str, str]:
-    logger.info("[web] resume START project=%s", project_id)
     config = _local_config()
     if config.llm.provider != "ollama":
         raise HTTPException(status_code=503, detail="local Ollama provider required")
@@ -177,20 +157,7 @@ def resume(project_id: UUID) -> dict[str, str]:
     provider.require_health()
     provider.require_model(config.llm.model)
     store = FilesystemStore(config.storage.root)
-    try:
-        directory = resume_plan(
-            provider,
-            store,
-            str(project_id),
-            model=config.llm.model,
-            temperature=config.llm.temperature,
-            top_p=config.llm.top_p,
-            top_k=config.llm.top_k,
-        )
-    except Exception:
-        logger.exception("[web] resume FAILED project=%s", project_id)
-        raise
-    logger.info("[web] resume COMPLETE project=%s", project_id)
+    directory = resume_plan(provider, store, str(project_id), model=config.llm.model, temperature=config.llm.temperature, top_p=config.llm.top_p, top_k=config.llm.top_k)
     return {"project_id": directory.name, "path": str(directory)}
 
 
@@ -202,27 +169,20 @@ def qa(project_id: UUID) -> dict[str, Any]:
     except (OSError, ValueError):
         raise HTTPException(status_code=404, detail="project not found") from None
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
-    logger.info(
-        "[web] QA project=%s passed=%s failures=%s", project_id, report.passed, len(report.failures)
-    )
     return asdict(report)
 
 
 @app.get("/api/projects/{project_id}/timeline")
 def timeline(project_id: UUID) -> dict[str, Any]:
-    store = _store()
-    path = store.project_dir(project_id) / "timeline.json"
+    path = _store().project_dir(project_id) / "timeline.json"
     if not path.is_file():
-        logger.info("[web] timeline missing project=%s", project_id)
         raise HTTPException(status_code=404, detail="timeline not found")
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        logger.warning("[web] timeline invalid project=%s", project_id)
         raise HTTPException(status_code=422, detail="timeline is invalid") from None
     if not isinstance(data, dict):
         raise HTTPException(status_code=422, detail="timeline is invalid")
-    logger.info("[web] timeline loaded project=%s", project_id)
     return data
 
 
