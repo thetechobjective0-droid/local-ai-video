@@ -19,10 +19,23 @@ class ProviderDescriptor:
 
 _REGISTRY: dict[str, ProviderDescriptor] = {
     "ffmpeg_ken_burns": ProviderDescriptor(
-        name="ffmpeg_ken_burns", version="1.0", kind="video", capabilities=asdict(get_provider_capabilities("ffmpeg_ken_burns").video)
+        name="ffmpeg_ken_burns",
+        version="1.0",
+        kind="video",
+        capabilities=asdict(get_provider_capabilities("ffmpeg_ken_burns").video),
     ),
     "ltx_video": ProviderDescriptor(
-        name="ltx_video", version="1.0", kind="video", capabilities=asdict(get_provider_capabilities("ltx_video").video)
+        name="ltx_video",
+        version="1.1",
+        kind="video",
+        capabilities=asdict(get_provider_capabilities("ltx_video").video),
+    ),
+    "ltx2_mlx": ProviderDescriptor(
+        name="ltx2_mlx",
+        version="1.0",
+        kind="video",
+        capabilities=asdict(get_provider_capabilities("ltx2_mlx").video)
+        | {"synchronized_audio": True, "runtime": "MLX"},
     ),
     "macos_tts": ProviderDescriptor(name="macos_tts", version="1.0", kind="audio", capabilities={"platform": "darwin"}),
     "ollama": ProviderDescriptor(name="ollama", version="1.0", kind="llm", capabilities={"structured_output": True}),
