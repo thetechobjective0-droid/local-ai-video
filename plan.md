@@ -35,17 +35,17 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 15 | Advanced recovery/refinement | IMPLEMENTED; bounded provider fallback/recovery paths are in place |
 | 16 | Provider/model registry evolution | IMPLEMENTED; typed provider capability/factory boundaries are in place |
 | 17 | Security/locality hardening | COMPLETE; filesystem/symlink containment, manifest validation, loopback serving, local Ollama enforcement, and security regression coverage hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability tests added; hardware acceptance remains outside CI |
+| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability/CLI tests added; hardware acceptance remains outside CI |
 | 19 | Observability/operational diagnostics | IMPLEMENTED; bounded in-process counters and duration summaries added without network telemetry |
-| 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media |
+| 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is now exposed through the operational CLI |
 | 21 | M4 resource/performance optimization | IN PROGRESS; memory-efficient ML inference controls and acceptance resource measurements added |
-| 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added |
+| 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments.
+Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. The `video-agent` entry point now also exposes `migrate` and `production-gate` operational commands.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
@@ -65,7 +65,7 @@ Security hardening is complete. `FilesystemStore.resolve_path()` and `project_pa
 
 ## Phase 20 — Persistence / schema migrations
 
-`app/storage/migrations.py` provides an idempotent filesystem migration entry point. Legacy `project.json` manifests are upgraded to schema `1.1` atomically while generated media remains untouched. Re-running the migration is a no-op.
+`app/storage/migrations.py` provides an idempotent filesystem migration entry point. Legacy `project.json` manifests are upgraded to schema `1.1` atomically while generated media remains untouched. Re-running the migration is a no-op. The `video-agent migrate` command makes the operation explicit and repeatable.
 
 ## Phase 21 — M4 resource/performance optimization
 
@@ -73,7 +73,7 @@ The ML providers reduce inference memory pressure through capability-gated atten
 
 ## Phase 22 — V1 production gate
 
-`app/production_gate.py` evaluates a persisted project against the local-only policy, schema version, storage security audit, deterministic media QA, and semantic baseline. It produces a machine-readable gate report and does not claim target-hardware acceptance; the real M4 acceptance command remains the hardware gate.
+`app/production_gate.py` evaluates a persisted project against the local-only policy, schema version, storage security audit, deterministic media QA, and semantic baseline. It produces a machine-readable gate report and does not claim target-hardware acceptance. The `video-agent production-gate PROJECT_ID` command exposes the check operationally; the real M4 acceptance command remains the hardware gate.
 
 ## Definition of done
 
