@@ -31,31 +31,29 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 11 | Loopback FastAPI + browser dashboard | IMPLEMENTED; polling lifecycle race fixed, loading UX, stale-refresh, video readiness, and determinate progress UI hardened |
 | 12 | Persistent planning/media jobs + restart semantics | IMPLEMENTED; stale planning-job recovery hardened; media jobs now finalize the project |
 | 13 | Target-machine acceptance harness | IMPLEMENTED; real M4 run pending |
-| 14 | Semantic/visual evaluation | IN PROGRESS; deterministic alignment, continuity, narration, and storyboard consistency baselines added |
+| 14 | Semantic/visual evaluation | IMPLEMENTED baseline; deterministic alignment, continuity, narration, and storyboard consistency are covered; true model-based visual evaluation remains hardware/model acceptance work |
 | 15 | Advanced recovery/refinement | IMPLEMENTED; bounded provider fallback/recovery paths are in place |
 | 16 | Provider/model registry evolution | IMPLEMENTED; typed provider capability/factory boundaries are in place |
 | 17 | Security/locality hardening | COMPLETE; filesystem/symlink containment, manifest validation, loopback serving, local Ollama enforcement, and security regression coverage hardened |
-| 18 | Testing pyramid + CI/CD expansion | PARTIALLY IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability/CLI tests added; hardware acceptance remains outside CI |
+| 18 | Testing pyramid + CI/CD expansion | IMPLEMENTED; deterministic unit/integration/UI/security/migration/observability/CLI tests and CI quality gates are present; hardware acceptance remains outside CI |
 | 19 | Observability/operational diagnostics | IMPLEMENTED; bounded in-process counters and duration summaries added without network telemetry |
 | 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
-| 21 | M4 resource/performance optimization | IN PROGRESS; memory-efficient ML inference controls and acceptance resource measurements added |
+| 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
 | 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
 | 23 | V2 advanced production features | FUTURE |
 | 24 | V3 platform evolution/research | FUTURE |
 
 ## Current implementation state
 
-Phases 0–13 are implemented. Phase 14 has a deterministic semantic baseline. Phases 15–17 and 19–20 now have production-oriented implementation primitives, and Phase 22 has a deterministic V1 gate. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, and idempotent schema migration. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments. The `video-agent` entry point exposes `migrate` and `production-gate` operational commands in addition to the existing generation, QA, rendering, and acceptance commands.
+Phases 0–22 have implementation coverage. Phase 14 now has a deterministic semantic/continuity baseline; its remaining model-based visual quality work is explicitly target-model acceptance rather than a CI requirement. Phases 15–22 have production-oriented implementation primitives. The target Mac runtime has macOS-safe memory probing, demand-driven ML provider construction, bounded recovery, safe artifact containment, loopback-only inference, deterministic QA, semantic baseline evaluation, local observability, idempotent schema migration, operational CLI commands, and a V1 production gate. The dashboard has a visible operation loader, determinate planning/media progress bars, correct polling lifecycle, final-video readiness handling, and terminal-state refresh. Diffusers/LTX inference uses memory-pressure controls and acceptance records process resource metrics. External media subprocesses use sanitized environments.
 
 The repository must never claim the hardware gate passed from CI alone. Real model loading, generation, memory pressure, thermal behavior and output quality require the actual M4 machine.
 
-The latest CI formatting regression is being normalized against Ruff 0.16.7 before the next full CI validation; no formatter auto-commit is used in CI. Evaluation, production-gate, FFmpeg, security, filesystem, web API, dashboard, and CLI formatting/integration have now been normalized.
+Ruff 0.16.7 formatting is normalized across the previously failing application files; CI remains the authoritative execution path for lint, type checking, and tests. CI does not auto-commit formatting changes.
 
 ## Phase 14 — Semantic / visual evaluation
 
-`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding.
-
-Remaining work is true local image/scene semantic evaluation, I2V motion quality, stronger visual continuity, final-video evaluation, and an optional local-model evaluator behind a provider boundary.
+`app/evaluation.py` provides deterministic project-prompt alignment, adjacent-scene continuity, visual-description-to-narration alignment, and image-prompt-to-motion-prompt storyboard consistency. These are lexical heuristics and are explicitly not visual understanding. This baseline is implemented and suitable for deterministic CI. Model-based image/scene semantic evaluation, I2V motion quality, stronger visual continuity, and final-video perceptual evaluation remain target-model acceptance work and must not be represented as passed by CI.
 
 ## Phase 17 — Security/locality hardening
 
@@ -63,7 +61,7 @@ Security hardening is complete. `FilesystemStore.resolve_path()` and `project_pa
 
 ## Phase 19 — Observability / operational diagnostics
 
-`app/observability.py` provides bounded in-process counters, bounded duration observations, timer context management, and serializable summaries. Counter names and duration series are capped to prevent an accidental unbounded-memory growth path. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
+`app/observability.py` provides bounded in-process counters, bounded duration observations, timer context management, and serializable summaries. Counter names and duration series are capped to prevent accidental unbounded-memory growth. It intentionally performs no network telemetry. This is the base layer for integrating per-job/per-provider metrics into operational reports.
 
 ## Phase 20 — Persistence / schema migrations
 
