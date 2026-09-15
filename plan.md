@@ -40,12 +40,12 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 20 | Persistence/schema migrations | IMPLEMENTED; idempotent storage migration upgrades legacy project manifests to schema 1.1 without touching media; migration is exposed through the operational CLI |
 | 21 | M4 resource/performance optimization | IMPLEMENTED tooling; memory-efficient ML inference controls and acceptance resource measurements added; sustained thermal/GPU utilization and model-specific latency require target-machine runs |
 | 22 | V1 production gate | IMPLEMENTED; deterministic locality/security/QA/semantic gate report added and exposed through the operational CLI |
-| 23 | V2 advanced production features | IN PROGRESS; reproducibility, artifact-integrity, export/import, and dependency-aware checkpoint foundations implemented |
+| 23 | V2 advanced production features | IN PROGRESS; reproducibility, artifact-integrity, export/import, and resumable checkpoint runtime foundations implemented |
 | 24 | V3 platform evolution/research | PLANNED; implementation scope and acceptance criteria defined |
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 23 is now in progress with reproducibility, artifact-integrity, portable project archive, and dependency-aware checkpoint foundations. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
+Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, and a reusable checkpoint runtime. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
 
 ## Phase 23 — V2 Advanced Production Features
 
@@ -56,8 +56,9 @@ Implemented foundations:
 - `app/storage/integrity.py`: SHA-256 artifact manifests, size tracking, project-relative containment checks, atomic persistence, and verification.
 - `app/storage/archive.py`: portable project export/import with archive path validation and integrity verification.
 - `app/orchestrator/checkpoints.py`: crash-safe stage checkpoints, dependency readiness, sequence tracking, completed-artifact tracking, and terminal-state validation.
+- `app/orchestrator/checkpoint_runtime.py`: reusable stage lifecycle for loading, starting, completing, and skipping already-completed stages.
 
-Next increments: wire checkpoints into the persistent job runner, add scene-level regeneration, resource-aware scheduling, structured event history, advanced evaluation/refinement, and dashboard controls.
+The next integration step is connecting `CheckpointRuntime` to the existing persistent media worker so actual image/video/audio stages resume from durable completion state. Subsequent increments remain scene-level regeneration, resource-aware scheduling, structured event history, advanced evaluation/refinement, and dashboard controls.
 
 ## Phase 24 — V3 Platform Evolution / Research
 
