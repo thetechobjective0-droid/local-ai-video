@@ -8,7 +8,7 @@ from uuid import UUID
 
 from app.config import load_config
 from app.orchestrator.events import append_job_event
-from app.orchestrator.jobs import MediaJob, MediaJobManager
+from app.orchestrator.jobs import MediaJobManager
 from app.orchestrator.resource_scheduler import ResourceReservation, ResourceScheduler
 from app.providers.capabilities import get_provider_capabilities
 from app.storage.filesystem import FilesystemStore
@@ -27,62 +27,25 @@ class ScheduledMediaJobManager(MediaJobManager):
         job = self.get(job_id)
         config = load_config(None)
         capability = get_provider_capabilities(config.video.provider).video
-        logger.info(
-            "[media] scheduler WAIT job=%s provider=%s memory_class=%s",
-            job_id,
-            config.video.provider,
-            capability.memory_class,
-        )
-        _emit(
-            self.store,
-            job.project_id,
-            "resource_wait",
-            job_id=job_id,
-            stage="media",
-            state="queued",
-            details={
-                "provider": config.video.provider,
-                "memory_class": capability.memory_class,
-            },
-        )
-        with self._resource_scheduler.reserve(str(job_id), capability) as reservation:
-            logger.info(
-                "[media] scheduler ADMIT job=%s reserved_gib=%.1f available_gib=%.1f",
-                job_id,
-                reservation.reserved_memory_gib,
-                reservation.available_memory_gib,
-            )
-            _emit(
-                self.store,
-                job.project_id,
-                "resource_admitted",
-                job_id=job_id,
-                stage="media",
-                state="running",
-                details={
-                    "reserved_memory_gib": reservation.reserved_memory_gib,
-                    "available_memory_gib": reservation.available_memory_gib,
-                },
-            )
-            super()._run(job_id)
-        final_job = self.get(job_id)
-        _emit(
-            self.store,
-            final_job.project_id,
-            "resource_released",
-            job_id=job_id,
-            stage="media",
-            state=final_job.state,
-        )
-        _emit(
-            self.store,
-            final_job.project_id,
-            "job_completed" if final_job.state == "completed" else "job_failed",
-            job_id=job_id,
-            state=final_job.state,
-            details={"error": final_job.error} if final_job.error else {},
-        )
-        logger.info("[media] scheduler RELEASE job=%s", job_id)
+        _emit(self.store, job.project_id, "resource_wait", job_id=job_id, stage="media", state="queued", details={"provider": config.video.provider, "memory_class": capability.memory_class})
+        try:
+            with self._resource_scheduler.reserve(str(job_id), capability, cancelled=lambda: self._cancellation.is_cancelled(job_id)) as reservation:
+                _emit(self.store, job.project_id, "resource_admitted", job_id=job_id, stage="media", state="running", details={"reserved_memory_gib": reservation.reserved_memory_gib, "available_memory_gib": reservation.available_memory_gib})
+                super()._run(job_id)
+        except Exception as exc:
+            logger.exception("[media] scheduler failed job=%s error=%s", job_id, exc)
+            try:
+                current = self.get(job_id)
+                if current.state not in {"cancelled", "completed", "failed"}:
+                    self._update(job_id, state="failed", error=str(exc))
+            except FileNotFoundError:
+                return
+        finally:
+            try:
+                final_job = self.get(job_id)
+                _emit(self.store, final_job.project_id, "resource_released", job_id=job_id, stage="media", state=final_job.state)
+            except FileNotFoundError:
+                pass
 
     def resource_snapshot(self) -> tuple[ResourceReservation, ...]:
         """Return active scheduler reservations for local diagnostics."""
@@ -100,15 +63,7 @@ def _emit(
     details: dict[str, object] | None = None,
 ) -> None:
     try:
-        append_job_event(
-            store.root,
-            project_id,
-            event,
-            job_id=job_id,
-            stage=stage,
-            state=state,
-            details=details,
-        )
+        append_job_event(store.root, project_id, event, job_id=job_id, stage=stage, state=state, details=details)
     except Exception:  # pragma: no cover - diagnostics must never break execution
         logger.exception("[events] failed to append event=%s job=%s", event, job_id)
 
