@@ -50,6 +50,10 @@ LTX_RUNTIME_REPO="${LTX_RUNTIME_REPO:-https://github.com/dgrauet/ltx-2-mlx.git}"
 LTX_MODEL_DIR="${LTX_MODEL_DIR:-$PROJECT_DIR/data/models/ltx-2.3-mlx-q8}"
 LTX_MODEL_REPO="${LTX_MODEL_REPO:-dgrauet/ltx-2.3-mlx-q8}"
 LTX_AUTO_DOWNLOAD_MODEL="${LTX_AUTO_DOWNLOAD_MODEL:-ask}"
+LTX_MANAGED_RUNTIME="false"
+if [[ "$LTX_RUNTIME_DIR" == "$PROJECT_DIR/data/runtime/ltx-2-mlx" ]]; then
+    LTX_MANAGED_RUNTIME="true"
+fi
 
 mkdir -p "$(dirname "$LTX_RUNTIME_DIR")" "$(dirname "$LTX_MODEL_DIR")"
 
@@ -70,30 +74,26 @@ if [[ ! -f "$LTX_RUNTIME_DIR/pyproject.toml" ]]; then
     exit 1
 fi
 
-if ! grep -q 'name = "ltx-2-mlx"' "$LTX_RUNTIME_DIR/pyproject.toml"; then
-    echo "ERROR: Unexpected LTX runtime checkout; package name ltx-2-mlx was not found."
-    echo "Runtime: $LTX_RUNTIME_DIR"
-    exit 1
-fi
+if ! grep -q '^name = "ltx-2-mlx"$' "$LTX_RUNTIME_DIR/pyproject.toml" \
+    || [[ ! -f "$LTX_RUNTIME_DIR/packages/ltx-pipelines-mlx/pyproject.toml" ]] \
+    || ! grep -q 'ltx-2-mlx = "ltx_pipelines_mlx.cli:main"' \
+        "$LTX_RUNTIME_DIR/packages/ltx-pipelines-mlx/pyproject.toml"; then
+    if [[ "$LTX_MANAGED_RUNTIME" != "true" ]]; then
+        echo "ERROR: Unexpected LTX runtime checkout; package name or CLI definition does not match the expected dgrauet/ltx-2-mlx runtime."
+        echo "Runtime: $LTX_RUNTIME_DIR"
+        echo "Expected repository: $LTX_RUNTIME_REPO"
+        exit 1
+    fi
 
-if [[ ! -f "$LTX_RUNTIME_DIR/packages/ltx-pipelines-mlx/pyproject.toml" ]]; then
-    echo "ERROR: LTX runtime is missing ltx-pipelines-mlx; cannot provide the ltx-2-mlx CLI."
-    echo "Runtime: $LTX_RUNTIME_DIR"
-    exit 1
-fi
-
-if ! grep -q 'ltx-2-mlx = "ltx_pipelines_mlx.cli:main"' \
-    "$LTX_RUNTIME_DIR/packages/ltx-pipelines-mlx/pyproject.toml"; then
-    echo "ERROR: Unexpected LTX runtime CLI definition."
-    echo "Expected console script: ltx-2-mlx = ltx_pipelines_mlx.cli:main"
-    exit 1
+    echo "→ Existing managed LTX runtime is stale; replacing it with $LTX_RUNTIME_REPO"
+    rm -rf "$LTX_RUNTIME_DIR"
+    git clone "$LTX_RUNTIME_REPO" "$LTX_RUNTIME_DIR"
 fi
 
 echo "→ Syncing LTX-2.3 MLX runtime dependencies..."
 uv --directory "$LTX_RUNTIME_DIR" sync --all-extras
 
 echo "✓ LTX runtime: $LTX_RUNTIME_DIR"
-
 echo "✓ LTX CLI   : ltx-2-mlx generate"
 
 if [[ ! -e "$LTX_MODEL_DIR" ]]; then
