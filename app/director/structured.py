@@ -23,7 +23,7 @@ def parse_json(text: str, model: type[T]) -> T:
         data = json.loads(text)
     except json.JSONDecodeError as exc:
         logger.warning("[structured] invalid JSON model=%s error=%s", model.__name__, exc)
-        raise StructuredOutputError(f"model output was not valid JSON: {exc}") from exc
+        raise StructuredOutputError(f"model output was invalid JSON: {exc}") from exc
     try:
         result = model.model_validate(data)
     except ValidationError as exc:
