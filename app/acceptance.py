@@ -6,7 +6,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
 import platform
-from time import monotonic
+import resource
+from time import monotonic, process_time
 from typing import Any
 from uuid import UUID
 
@@ -41,7 +42,9 @@ class AcceptanceReport:
     checks: tuple[AcceptanceCheck, ...]
     resource_before: dict[str, int]
     resource_after: dict[str, int]
-    report_version: str = "1.0"
+    peak_process_memory_bytes: int = 0
+    process_cpu_seconds: float = 0.0
+    report_version: str = "1.1"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -52,6 +55,8 @@ class AcceptanceReport:
             "checks": [asdict(check) for check in self.checks],
             "resource_before": self.resource_before,
             "resource_after": self.resource_after,
+            "peak_process_memory_bytes": self.peak_process_memory_bytes,
+            "process_cpu_seconds": self.process_cpu_seconds,
         }
 
 
@@ -118,6 +123,12 @@ def _resource_dict(resources: Any) -> dict[str, int]:
     }
 
 
+def _peak_process_memory_bytes() -> int:
+    """Return process peak RSS with platform-correct getrusage units."""
+    value = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+    return value if platform.system() == "Darwin" else value * 1024
+
+
 def run_acceptance(
     config: AppConfig,
     project_id: UUID | None = None,
@@ -127,6 +138,8 @@ def run_acceptance(
     """Run readiness checks and, when requested, one real local media path."""
     checks: list[AcceptanceCheck] = []
     before = snapshot(config.storage.root)
+    peak_memory = _peak_process_memory_bytes()
+    cpu_start = process_time()
 
     def add(name: str, passed: bool, detail: str, seconds: float | None = None) -> None:
         checks.append(AcceptanceCheck(name, passed, detail, seconds))
@@ -228,6 +241,7 @@ def run_acceptance(
             add("media_pipeline", False, f"{type(exc).__name__}: {exc}")
 
     after = snapshot(config.storage.root)
+    peak_memory = max(peak_memory, _peak_process_memory_bytes())
     return AcceptanceReport(
         passed=all(check.passed for check in checks),
         platform=platform.system(),
@@ -235,6 +249,8 @@ def run_acceptance(
         checks=tuple(checks),
         resource_before=_resource_dict(before),
         resource_after=_resource_dict(after),
+        peak_process_memory_bytes=peak_memory,
+        process_cpu_seconds=process_time() - cpu_start,
     )
 
 
