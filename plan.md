@@ -45,7 +45,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, reusable checkpoint runtime, persistent media-job checkpoint integration, selective scene regeneration, and resource-aware scheduling. Scene regeneration invalidates stale scene/downstream artifacts and media/finalization checkpoints, clears stale scene references, regenerates required downstream media, and rebuilds the final project. Media jobs now use conservative local memory admission based on provider memory class and current macOS resource availability, with heavyweight providers serialized by policy and queued jobs released when memory becomes available. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
+Phases 0–22 have implementation coverage. Phase 23 is in progress with reproducibility, artifact-integrity, portable project archive, dependency-aware checkpoints, reusable checkpoint runtime, persistent media-job checkpoint integration, selective scene regeneration, and resource-aware scheduling. Scene regeneration invalidates stale scene/downstream artifacts and media/finalization checkpoints, clears stale scene references, regenerates required downstream media, and rebuilds the final project. Media jobs now use conservative local memory admission based on provider memory class and current macOS resource availability, with heavyweight providers serialized by policy and queued jobs released when memory becomes available. Portable archive import/export is now compatible with Python 3.11, rejects unsafe links/device members, and verifies the persisted integrity manifest correctly. Phase 24 has a defined research/platform contract and will follow the Phase 23 extension boundaries. Existing V1 invariants remain mandatory while V2/V3 capabilities are developed.
 
 ## Phase 23 — V2 Advanced Production Features
 
@@ -54,7 +54,7 @@ The detailed contract is in `docs/phase-23-24.md`.
 Implemented foundations:
 - `app/generation/reproducibility.py`: immutable project/provider/model/parameter capture and deterministic fingerprinting.
 - `app/storage/integrity.py`: SHA-256 artifact manifests, size tracking, project-relative containment checks, atomic persistence, and verification.
-- `app/storage/archive.py`: portable project export/import with archive path validation and integrity verification.
+- `app/storage/archive.py`: portable project export/import with archive path validation, Python 3.11-safe extraction, unsafe-member rejection, and integrity verification.
 - `app/orchestrator/checkpoints.py`: crash-safe stage checkpoints, dependency readiness, sequence tracking, completed-artifact tracking, and terminal-state validation.
 - `app/orchestrator/checkpoint_runtime.py`: reusable stage lifecycle for loading, starting, completing, and skipping already-completed stages.
 - `app/orchestrator/jobs.py`: durable audio/media/finalization stage checkpoints and explicit interrupted/failed job resume.
