@@ -17,8 +17,10 @@ def build_video_provider(config: AppConfig) -> VideoProvider:
     if config.video.provider == "ltx2_mlx":
         return LTX2MLXVideoProvider(
             config.video.engine_path,
+            config.video.model_path,
             uv_command=config.video.uv_command,
-            bits=config.video.bits,
+            low_ram=config.video.low_ram,
+            pipeline=config.video.pipeline,
             native_audio=config.video.native_audio,
             i2v_strength=config.video.i2v_strength,
         )
