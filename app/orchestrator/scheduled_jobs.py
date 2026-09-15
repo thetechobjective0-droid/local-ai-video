@@ -7,6 +7,7 @@ from threading import Lock
 from uuid import UUID
 
 from app.config import load_config
+from app.orchestrator.cancellation import JobCancellationRequested
 from app.orchestrator.events import append_job_event
 from app.orchestrator.jobs import MediaJobManager
 from app.orchestrator.resource_scheduler import ResourceReservation, ResourceScheduler
@@ -32,6 +33,10 @@ class ScheduledMediaJobManager(MediaJobManager):
             with self._resource_scheduler.reserve(str(job_id), capability, cancelled=lambda: self._cancellation.is_cancelled(job_id)) as reservation:
                 _emit(self.store, job.project_id, "resource_admitted", job_id=job_id, stage="media", state="running", details={"reserved_memory_gib": reservation.reserved_memory_gib, "available_memory_gib": reservation.available_memory_gib})
                 super()._run(job_id)
+        except JobCancellationRequested as exc:
+            current = self.get(job_id)
+            if current.state not in {"completed", "failed", "cancelled"}:
+                self._update(job_id, state="cancelled", error=str(exc))
         except Exception as exc:
             logger.exception("[media] scheduler failed job=%s error=%s", job_id, exc)
             try:
