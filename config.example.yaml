@@ -1,5 +1,5 @@
 runtime:
-  profile: balanced
+  profile: quality
   max_concurrent_media_jobs: 1
   local_only: true
 
@@ -16,7 +16,7 @@ image:
   device: mps
   width: 1024
   height: 576
-  steps: 30
+  steps: 35
   guidance_scale: 7.0
 
 tts:
@@ -26,15 +26,22 @@ tts:
   sample_rate: 22050
 
 video:
-  provider: ffmpeg_ken_burns
+  # Use real local AI image-to-video for high-quality motion.
+  provider: ltx_video
+  model_path: ./data/models/LTX-Video
   device: mps
   dtype: float16
   width: 704
-  height: 384
-  fps: 16
-  # For real local AI I2V, use a downloaded LTX-Video checkpoint:
-  # provider: ltx_video
-  # model_path: ./data/models/LTX-Video
+  height: 480
+  fps: 24
+  inference_steps: 40
+  guidance_scale: 3.0
+  guidance_rescale: 0.0
+  image_cond_noise_scale: 0.025
+  decode_timestep: 0.05
+  decode_noise_scale: 0.025
+  # Deterministic FFmpeg motion remains available as a fallback.
+  # provider: ffmpeg_ken_burns
 
 storage:
   root: ./data
