@@ -15,14 +15,17 @@ import tempfile
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import AppConfig, load_config
+from app.generation.audio import generate_scene_audio
 from app.generation.subtitles import build_subtitles
 from app.generation.timeline import build_timeline
+from app.models.artifact import Artifact
 from app.models.scene import Scene
 from app.orchestrator.media_generation import generate_project_media
 from app.providers.capabilities import get_provider_capabilities
 from app.providers.factory import build_video_fallback, build_video_provider
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.image import ImageProvider
+from app.providers.macos_tts import MacOSTTSProvider
 from app.qa.project import validate_project
 from app.qa.report import write_qa_report
 from app.render.ffmpeg import FFmpegRenderer
@@ -59,6 +62,54 @@ def _build_image_provider_if_needed(config: AppConfig, scenes: List[Scene]) -> I
     return DiffusersImageProvider(config.image.model_path, device=config.image.device)
 
 
+def _audio_is_usable(store: FilesystemStore, project_id: UUID, scene: Scene) -> bool:
+    """Return true only when the persisted scene audio exists and contains signal."""
+    if scene.audio_asset is None:
+        return False
+    directory = store.project_dir(project_id)
+    manifest_path = directory / f"scene-{scene.index:04d}-audio.json"
+    try:
+        artifact = Artifact.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+        if artifact.id != scene.audio_asset:
+            return False
+        path = artifact.path.expanduser()
+        if not path.is_absolute():
+            path = (directory / path).resolve()
+        if directory.resolve() not in path.parents or not path.is_file():
+            return False
+        import wave
+
+        with wave.open(str(path), "rb") as audio:
+            if audio.getnframes() <= 0:
+                return False
+            return bool(audio.readframes(audio.getnframes()))
+    except (OSError, ValueError, wave.Error):
+        return False
+
+
+def _ensure_project_audio(
+    store: FilesystemStore, project_id: UUID, scenes: list[Scene], config: AppConfig
+) -> list[Scene]:
+    """Create or replace missing/silent scene narration before final rendering."""
+    provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
+    refreshed: list[Scene] = []
+    for scene in sorted(scenes, key=lambda item: item.index):
+        current = scene
+        if current.narration.strip() and not _audio_is_usable(store, project_id, current):
+            logger.info("[media] scene=%s audio generation START provider=%s", current.index, provider.provider_name)
+            _, current = generate_scene_audio(
+                provider,
+                store,
+                project_id,
+                current,
+                voice=config.tts.voice,
+                rate=config.tts.rate,
+            )
+            logger.info("[media] scene=%s audio generation COMPLETE", current.index)
+        refreshed.append(current)
+    return refreshed
+
+
 def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
     """Build timeline/subtitles, render final.mp4, and persist deterministic QA."""
     project = store.load_project(project_id)
@@ -91,14 +142,10 @@ class MediaJobManager:
 
     def __init__(self, store: FilesystemStore, *, max_workers: int = 1) -> None:
         self.store = store
-        self._executor = ThreadPoolExecutor(
-            max_workers=max_workers, thread_name_prefix="video-agent-job"
-        )
+        self._executor = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="video-agent-job")
         self._futures: dict[UUID, Future[None]] = {}
         self._lock = Lock()
-        logger.info(
-            "[media] manager initialized worker_count=%s storage=%s", max_workers, store.root
-        )
+        logger.info("[media] manager initialized worker_count=%s storage=%s", max_workers, store.root)
         self._recover_stale_jobs()
 
     def _path(self, job_id: UUID) -> Path:
@@ -112,9 +159,7 @@ class MediaJobManager:
     def _save(self, job: MediaJob) -> MediaJob:
         path = self._path(job.id)
         payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False
-        ) as temp:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=path.parent, prefix=".job-", delete=False) as temp:
             temp.write(payload)
             temp_path = Path(temp.name)
         temp_path.replace(path)
@@ -129,18 +174,8 @@ class MediaJobManager:
             except (OSError, ValueError):
                 continue
             if job.state in {"queued", "running"}:
-                logger.warning(
-                    "[media] recovering stale job=%s previous_state=%s", job.id, job.state
-                )
-                self._save(
-                    job.model_copy(
-                        update={
-                            "state": "interrupted",
-                            "updated_at": datetime.now(timezone.utc),
-                            "error": "worker process restarted",
-                        }
-                    )
-                )
+                logger.warning("[media] recovering stale job=%s previous_state=%s", job.id, job.state)
+                self._save(job.model_copy(update={"state": "interrupted", "updated_at": datetime.now(timezone.utc), "error": "worker process restarted"}))
 
     def get(self, job_id: UUID) -> MediaJob:
         path = self._path(job_id)
@@ -164,21 +199,9 @@ class MediaJobManager:
         logger.info("[media] submit START project=%s", project_id)
         scenes = self._load_scenes(project_id)
         now = datetime.now(timezone.utc)
-        job = MediaJob(
-            id=uuid4(),
-            project_id=project_id,
-            state="queued",
-            created_at=now,
-            updated_at=now,
-            scene_count=len(scenes),
-        )
+        job = MediaJob(id=uuid4(), project_id=project_id, state="queued", created_at=now, updated_at=now, scene_count=len(scenes))
         self._save(job)
-        logger.info(
-            "[media] submitted job=%s project=%s scene_count=%s state=queued",
-            job.id,
-            project_id,
-            len(scenes),
-        )
+        logger.info("[media] submitted job=%s project=%s scene_count=%s state=queued", job.id, project_id, len(scenes))
         future = self._executor.submit(self._run, job.id)
         with self._lock:
             self._futures[job.id] = future
@@ -201,32 +224,20 @@ class MediaJobManager:
     def _update(self, job_id: UUID, **changes: object) -> MediaJob:
         current = self.get(job_id)
         updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
-        logger.info(
-            "[media] job=%s state=%s progress=%s/%s",
-            job_id,
-            updated.state,
-            updated.completed_scenes,
-            updated.scene_count,
-        )
+        logger.info("[media] job=%s state=%s progress=%s/%s", job_id, updated.state, updated.completed_scenes, updated.scene_count)
         return self._save(updated)
 
     def _run(self, job_id: UUID) -> None:
-        job = self._update(
-            job_id, state="running", started_at=datetime.now(timezone.utc), error=None
-        )
+        job = self._update(job_id, state="running", started_at=datetime.now(timezone.utc), error=None)
         logger.info("[media] worker START job=%s project=%s", job.id, job.project_id)
         try:
             logger.info("[media] loading configuration job=%s", job_id)
             config = load_config(None)
             scenes = self._load_scenes(job.project_id)
-            logger.info(
-                "[media] config image=%s video=%s device=%s",
-                config.image.model_path,
-                config.video.provider,
-                config.image.device,
-            )
+            logger.info("[media] config image=%s video=%s device=%s", config.image.model_path, config.video.provider, config.image.device)
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
+            scenes = _ensure_project_audio(self.store, job.project_id, scenes, config)
             logger.info("[media] initializing video provider=%s", config.video.provider)
             video_provider = build_video_provider(config)
             image_provider = _build_image_provider_if_needed(config, scenes)
@@ -234,46 +245,18 @@ class MediaJobManager:
             logger.info("[media] provider capability=%s", capability)
 
             def progress(completed: int, total: int) -> None:
-                logger.info(
-                    "[media] progress job=%s completed=%s total=%s", job_id, completed, total
-                )
+                logger.info("[media] progress job=%s completed=%s total=%s", job_id, completed, total)
                 self._update(job_id, completed_scenes=completed, scene_count=total)
 
             logger.info("[media] generation START job=%s", job_id)
-            generate_project_media(
-                self.store,
-                job.project_id,
-                scenes,
-                video_provider=video_provider,
-                image_provider=image_provider,
-                image_model=config.image.model_path.name,
-                image_width=config.image.width,
-                image_height=config.image.height,
-                image_steps=config.image.steps,
-                image_guidance_scale=config.image.guidance_scale,
-                video_capability=capability,
-                fallback_provider=build_video_fallback(config),
-                width=config.video.width,
-                height=config.video.height,
-                fps=config.video.fps,
-                progress_callback=progress,
-            )
+            generate_project_media(self.store, job.project_id, scenes, video_provider=video_provider, image_provider=image_provider, image_model=config.image.model_path.name, image_width=config.image.width, image_height=config.image.height, image_steps=config.image.steps, image_guidance_scale=config.image.guidance_scale, video_capability=capability, fallback_provider=build_video_fallback(config), width=config.video.width, height=config.video.height, fps=config.video.fps, progress_callback=progress)
             logger.info("[media] finalization START job=%s", job_id)
             _finalize_project_media(self.store, job.project_id)
-            self._update(
-                job_id,
-                state="completed",
-                completed_scenes=job.scene_count,
-                completed_at=datetime.now(timezone.utc),
-            )
+            self._update(job_id, state="completed", completed_scenes=job.scene_count, completed_at=datetime.now(timezone.utc))
             logger.info("[media] worker COMPLETE job=%s project=%s", job.id, job.project_id)
         except Exception as exc:
-            logger.exception(
-                "[media] worker FAILED job=%s project=%s error=%s", job.id, job.project_id, exc
-            )
-            self._update(
-                job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc)
-            )
+            logger.exception("[media] worker FAILED job=%s project=%s error=%s", job.id, job.project_id, exc)
+            self._update(job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc))
         finally:
             with self._lock:
                 self._futures.pop(job_id, None)
