@@ -20,12 +20,18 @@ def build_video_provider(config: AppConfig) -> VideoProvider:
             config.video.model_path,
             device=config.video.device,
             dtype=config.video.dtype,
+            inference_steps=config.video.inference_steps,
+            guidance_scale=config.video.guidance_scale,
+            guidance_rescale=config.video.guidance_rescale,
+            image_cond_noise_scale=config.video.image_cond_noise_scale,
+            decode_timestep=config.video.decode_timestep,
+            decode_noise_scale=config.video.decode_noise_scale,
         )
     raise ConfigurationError(f"unsupported local video provider: {config.video.provider}")
 
 
 def build_video_fallback(config: AppConfig) -> VideoProvider | None:
-    """Return the deterministic fallback when the primary provider is not FFmpeg."""
-    if config.video.provider == "ffmpeg_ken_burns":
+    """Return FFmpeg only when the operator explicitly enables fallback."""
+    if config.video.provider == "ffmpeg_ken_burns" or not config.video.allow_fallback:
         return None
     return FFmpegVideoProvider()

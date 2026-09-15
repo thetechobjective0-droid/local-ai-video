@@ -11,10 +11,8 @@ from app.providers.video import VideoGenerationRequest, VideoResult
 class FFmpegVideoProvider:
     """Create a deterministic motion clip from a local still image.
 
-    This is deliberately an image-to-video fallback rather than an AI model:
-    it provides a real video-provider boundary while preserving the local-only
-    pipeline and giving the renderer motion clips before an AI I2V backend is
-    selected.
+    This provider is deliberately not an AI video synthesizer. It is available
+    only as an explicitly selected or explicitly enabled fallback path.
     """
 
     provider_name = "ffmpeg_ken_burns"
@@ -86,7 +84,11 @@ class FFmpegVideoProvider:
             width=width,
             height=height,
             sha256=digest,
-            metadata=request.metadata,
+            metadata={
+                **request.metadata,
+                "generation_mode": "image_motion",
+                "temporal_generation": False,
+            },
         )
 
 

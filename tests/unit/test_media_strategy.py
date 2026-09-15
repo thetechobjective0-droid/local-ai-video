@@ -19,6 +19,21 @@ def test_prefers_image_to_video_when_supported() -> None:
     assert selected is MediaType.IMAGE_TO_VIDEO
 
 
+def test_i2v_provider_overrides_static_storyboard_preference() -> None:
+    scene = Scene(
+        index=1,
+        start_seconds=0,
+        duration_seconds=4,
+        preferred_media_type=MediaType.STATIC_IMAGE,
+        fallback_media_type=MediaType.IMAGE_MOTION,
+    )
+    selected = select_media_type(
+        scene,
+        video=VideoCapability(image_to_video=True, max_duration_seconds=5, image_motion=True),
+    )
+    assert selected is MediaType.IMAGE_TO_VIDEO
+
+
 def test_falls_back_when_video_duration_is_unsupported() -> None:
     scene = Scene(
         index=1,

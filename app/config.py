@@ -44,13 +44,16 @@ class TTSConfig(BaseModel):
 
 class VideoConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    provider: str = "ffmpeg_ken_burns"
-    model_path: Path | None = None
+    # Real AI image-to-video is the production default. FFmpeg motion must be
+    # explicitly selected when a deterministic still-image fallback is desired.
+    provider: str = "ltx_video"
+    model_path: Path | None = Path("./data/models/LTX-Video")
+    allow_fallback: bool = False
     device: str = Field(default="mps", pattern="^(mps|cpu)$")
     dtype: str = Field(default="float16", pattern="^(float16|bfloat16|float32)$")
     width: int = Field(default=704, ge=64, multiple_of=32)
-    height: int = Field(default=384, ge=64, multiple_of=32)
-    fps: int = Field(default=16, ge=1, le=60)
+    height: int = Field(default=480, ge=64, multiple_of=32)
+    fps: int = Field(default=24, ge=1, le=60)
     inference_steps: int = Field(default=40, ge=1, le=100)
     guidance_scale: float = Field(default=3.0, ge=0, le=20)
     guidance_rescale: float = Field(default=0.0, ge=0, le=1)
@@ -75,7 +78,7 @@ class AppConfig(BaseModel):
 
 
 def load_config(path: Path | None = None) -> AppConfig:
-    """Load YAML configuration, falling back to safe defaults."""
+    """Load YAML configuration, falling back to safe local AI-video defaults."""
     if path is None:
         return AppConfig()
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

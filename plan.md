@@ -12,6 +12,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 - Model weights, generated media, caches, secrets, and machine state are never committed.
 - Heavy ML dependencies remain optional for normal CI.
 - M4 resource concurrency is conservative by default.
+- A real AI video run must use a temporal I2V provider; deterministic still-image motion is never an implicit substitute.
 
 ## Phase status
 
@@ -24,7 +25,7 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 | 4 | Local macOS TTS | IMPLEMENTED; non-silent output validation integrated |
 | 5 | Timeline + SRT/WebVTT | IMPLEMENTED |
 | 6 | Deterministic FFmpeg renderer + FFprobe validation | IMPLEMENTED; path containment and macOS media-process environment hardened |
-| 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; M4 MODEL ACCEPTANCE; LTX quality controls and temporal-stability prompt handling added |
+| 7 | Local AI I2V boundary + LTX provider + fallback | IMPLEMENTED; real LTX I2V is now the default production provider, routing prioritizes I2V, quality controls are provider-bound, and FFmpeg fallback is explicit opt-in only |
 | 8 | Media routing, resources, caching, lifecycle | IMPLEMENTED; conservative resource scheduling now operational |
 | 9 | Deterministic project/media QA | COMPLETE |
 | 10 | Bounded recovery/refinement integrations | IMPLEMENTED |
@@ -45,11 +46,13 @@ Target: local-first AI video generation on Apple Silicon, initially Apple M4 / 3
 
 ## Current implementation state
 
-The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by canonical timeline generation, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, benchmark comparison/regression reporting, and loopback APIs for platform operations.
+The repository now contains the complete V2/V3 application architecture described by `docs/phase-23-24.md` while preserving the V1 local-only invariants. Phase 23 has durable reproducibility and integrity metadata, portable Python 3.11-safe archives, dependency-aware checkpoints, resumable and cooperatively cancellable media jobs, memory-aware scheduling, structured local JSONL job events, selective scene regeneration, editable scene timing/order/narration/visual prompts, per-scene voice metadata consumed by macOS TTS, transition metadata consumed by timeline resolution, subtitle metadata, human approval records, deterministic evaluation/refinement proposals, and local operator APIs. Phase 24 adds a versioned provider registry, capability compatibility discovery, local benchmark reports, reproducible experiment manifests/results, benchmark comparison/regression reporting, and loopback APIs for platform operations.
 
-The video-generation quality path has now been upgraded. LTX I2V uses the dedicated `LTXImageToVideoPipeline`, explicit negative prompts, full shot-context prompt construction, configurable denoising/guidance, image-conditioning noise, timestep-aware decode controls, and a versioned generation cache key so old low-quality cached outputs are not silently reused. `config.example.yaml` now demonstrates a quality-oriented local LTX configuration, while `docs/video-quality.md` documents the quality ladder and M4 trade-offs. The deterministic FFmpeg provider remains available as a reliability fallback but is explicitly documented as still-image animation rather than AI video synthesis.
+The video-generation path has been corrected so the application now treats real local temporal generation as the production path. `LTXImageToVideoPipeline` is the default configured video provider, scene routing prioritizes `IMAGE_TO_VIDEO` whenever the provider supports it, and LTX receives the configured inference/guidance/conditioning controls from the provider factory instead of silently reverting to hard-coded defaults. Generated LTX artifacts are tagged `generation_mode=ai_i2v` and `temporal_generation=true`. `ffmpeg_ken_burns` is explicitly documented and identified as still-image motion (`generation_mode=image_motion`) and can only be used as a primary provider or an operator-enabled fallback; an LTX failure no longer silently becomes a slideshow-like clip.
 
-The only remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
+The previous acceptance video exposed the architectural problem: the default application path could render multiple still images with FFmpeg motion rather than synthesizing temporal frames. That behavior is now blocked by the default configuration and routing rules. A fresh project using the default configuration requires the local LTX model; deterministic motion must be selected intentionally.
+
+The remaining validation items are target-machine execution claims that cannot be established from repository code alone: sustained Apple M4 thermal behavior, model-specific latency/throughput, and real Diffusers/LTX workload acceptance. Those are execution/acceptance activities rather than missing software architecture.
 
 ## Phase 23 — V2 Advanced Production Features
 
@@ -70,7 +73,7 @@ Implemented:
 - Human approval checkpoint records and API controls.
 - Deterministic evaluation plus bounded, non-autonomous refinement proposals.
 - Existing dashboard controls for scene inspection, regeneration, resume, QA, progress, and final-video readiness.
-- Quality-oriented LTX I2V configuration and temporal-stability prompt/conditioning controls.
+- Real LTX I2V as the default scene-video path with explicit deterministic FFmpeg fallback semantics.
 
 ## Phase 24 — V3 Platform Evolution / Research
 

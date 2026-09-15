@@ -22,10 +22,22 @@ class LTXVideoProvider:
         *,
         device: str = "mps",
         dtype: str = "float16",
+        inference_steps: int = 40,
+        guidance_scale: float = 3.0,
+        guidance_rescale: float = 0.0,
+        image_cond_noise_scale: float = 0.025,
+        decode_timestep: float = 0.05,
+        decode_noise_scale: float | None = 0.025,
     ) -> None:
         self.model_path = model_path.expanduser().resolve()
         self.device = device
         self.dtype = dtype
+        self.inference_steps = inference_steps
+        self.guidance_scale = guidance_scale
+        self.guidance_rescale = guidance_rescale
+        self.image_cond_noise_scale = image_cond_noise_scale
+        self.decode_timestep = decode_timestep
+        self.decode_noise_scale = decode_noise_scale
         self._pipeline: Any = None
         self._model_name = self.model_path.name
 
@@ -92,12 +104,12 @@ class LTXVideoProvider:
         request.output_path.parent.mkdir(parents=True, exist_ok=True)
         pipeline = self._load_pipeline()
         metadata = request.metadata
-        inference_steps = int(str(metadata.get("inference_steps", 40)))
-        guidance_scale = float(str(metadata.get("guidance_scale", 3.0)))
-        guidance_rescale = float(str(metadata.get("guidance_rescale", 0.0)))
-        image_cond_noise_scale = float(str(metadata.get("image_cond_noise_scale", 0.025)))
-        decode_timestep = float(str(metadata.get("decode_timestep", 0.05)))
-        decode_noise_scale = metadata.get("decode_noise_scale", 0.025)
+        inference_steps = self.inference_steps
+        guidance_scale = self.guidance_scale
+        guidance_rescale = self.guidance_rescale
+        image_cond_noise_scale = self.image_cond_noise_scale
+        decode_timestep = self.decode_timestep
+        decode_noise_scale = self.decode_noise_scale
         prompt = request.prompt.strip()
         negative_prompt = request.negative_prompt.strip() or (
             "worst quality, low quality, blurry, jittery, flicker, inconsistent motion, "
@@ -131,14 +143,15 @@ class LTXVideoProvider:
             if decode_timestep > 0:
                 call_kwargs["decode_timestep"] = decode_timestep
             if decode_noise_scale is not None:
-                call_kwargs["decode_noise_scale"] = float(str(decode_noise_scale))
+                call_kwargs["decode_noise_scale"] = decode_noise_scale
             with torch.inference_mode():
                 result = pipeline(**call_kwargs)
                 frames_output = result.frames[0]
                 export_to_video(frames_output, str(request.output_path), fps=request.fps)
                 del frames_output, result, call_kwargs, generator
         except TypeError:
-            # Older local Diffusers releases may not expose the newer optional LTX kwargs.
+            # Keep compatibility with older local Diffusers releases that do not
+            # expose the timestep-aware optional arguments.
             try:
                 import torch
                 from diffusers.utils import export_to_video, load_image
@@ -190,6 +203,8 @@ class LTXVideoProvider:
             sha256=digest,
             metadata={
                 **metadata,
+                "generation_mode": "ai_i2v",
+                "temporal_generation": True,
                 "num_frames": frames,
                 "effective_prompt": prompt,
                 "negative_prompt": negative_prompt,

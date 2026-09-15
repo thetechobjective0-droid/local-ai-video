@@ -22,8 +22,19 @@ def select_media_type(
     video: VideoCapability,
     available_memory_gb: float | None = None,
 ) -> MediaType:
-    """Select a renderable media mode without using an LLM."""
-    candidates = [scene.preferred_media_type, scene.fallback_media_type]
+    """Select a renderable media mode without using an LLM.
+
+    When the configured provider can perform real image-to-video generation,
+    that capability takes precedence over storyboard defaults such as static
+    image or Ken-Burns motion. Static image motion remains available only when
+    the provider cannot perform I2V or the I2V resource gate rejects the clip.
+    """
+    candidates: list[MediaType] = []
+    if video.image_to_video:
+        candidates.append(MediaType.IMAGE_TO_VIDEO)
+    for candidate in (scene.preferred_media_type, scene.fallback_media_type):
+        if candidate not in candidates:
+            candidates.append(candidate)
     if MediaType.IMAGE_MOTION not in candidates:
         candidates.append(MediaType.IMAGE_MOTION)
     if MediaType.STATIC_IMAGE not in candidates:
