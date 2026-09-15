@@ -103,7 +103,7 @@ def generate_scene_video(
     model_name = getattr(provider, "model_name", getattr(provider, "_model_name", "unknown"))
     effective_prompt = _effective_motion_prompt(scene)
     generation_key = cache_key(
-        "scene-video-v2",
+        "scene-video-v3",
         {
             "image_sha256": image_sha256,
             "provider": provider_name,
@@ -167,6 +167,16 @@ def generate_scene_video(
     if result.duration_seconds <= 0 or result.fps <= 0:
         raise VideoAgentError("video provider returned invalid video metadata")
 
+    generation_mode = result.metadata.get("generation_mode")
+    if provider_name == "ltx_video" and generation_mode != "ai_i2v":
+        raise VideoAgentError(
+            "LTX provider did not return an artifact marked as real temporal image-to-video"
+        )
+    if provider_name == "ffmpeg_ken_burns" and generation_mode != "image_motion":
+        raise VideoAgentError(
+            "FFmpeg provider did not identify its output as deterministic image motion"
+        )
+
     qa = validate_scene_video(
         result.path,
         expected_duration=result.duration_seconds,
@@ -190,6 +200,7 @@ def generate_scene_video(
             "seed": seed,
             "prompt": effective_prompt,
             "negative_prompt": scene.negative_prompt,
+            "generation_mode": generation_mode,
             "cache_key": generation_key,
             "qa": qa,
             **result.metadata,
