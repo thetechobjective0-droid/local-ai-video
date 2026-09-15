@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from app.director.project import create_plan, resume_plan
 from app.models.project import ProjectStatus
@@ -15,12 +16,14 @@ class CountingProvider:
 
     def generate(self, request: LLMRequest) -> LLMResponse:
         self.calls += 1
-        if "creative brief" in request.prompt.lower():
-            text = '{"title":"Agents","objective":"Explain agents","audience":"general","tone":"clear","language":"en","duration_seconds":10,"visual_style":"cinematic"}'
-        elif "narration script" in request.prompt:
+        schema = request.format if isinstance(request.format, dict) else {}
+        properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+        if "scenes" in properties:
+            text = '{"scenes":[{"index":1,"start_seconds":0,"duration_seconds":5,"narration":"plan","visual_description":"planning","image_prompt":"planning","motion_prompt":"slow"},{"index":2,"start_seconds":5,"duration_seconds":5,"narration":"act","visual_description":"acting","image_prompt":"acting","motion_prompt":"slow"}]}'
+        elif "estimated_duration_seconds" in properties:
             text = '{"title":"Agents","narration":"AI agents plan and act.","estimated_duration_seconds":10}'
         else:
-            text = '{"scenes":[{"index":1,"start_seconds":0,"duration_seconds":5,"narration":"plan","visual_description":"planning","image_prompt":"planning","motion_prompt":"slow"},{"index":2,"start_seconds":5,"duration_seconds":5,"narration":"act","visual_description":"acting","image_prompt":"acting","motion_prompt":"slow"}]}'
+            text = '{"title":"Agents","objective":"Explain agents","audience":"general","tone":"clear","language":"en","duration_seconds":10,"visual_style":"cinematic"}'
         return LLMResponse(text=text, model="fake")
 
 
