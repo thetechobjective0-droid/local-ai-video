@@ -1,5 +1,8 @@
 """Local LTX-Video image-to-video provider using Diffusers."""
 
+from __future__ import annotations
+
+import gc
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -49,10 +52,30 @@ class LTXVideoProvider:
                 local_files_only=True,
             )
             pipeline.to(self.device)
+            if hasattr(pipeline, "enable_attention_slicing"):
+                pipeline.enable_attention_slicing("auto")
+            if hasattr(pipeline, "enable_vae_slicing"):
+                pipeline.enable_vae_slicing()
+            if hasattr(pipeline, "enable_vae_tiling"):
+                pipeline.enable_vae_tiling()
         except Exception as exc:
             raise ProviderUnavailableError("failed to load the local LTX video model") from exc
         self._pipeline = pipeline
         return pipeline
+
+    @staticmethod
+    def _release_torch_memory() -> None:
+        """Release temporary tensors and opportunistically return accelerator cache."""
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except (ImportError, AttributeError, RuntimeError):
+            pass
 
     def generate(self, request: VideoGenerationRequest) -> VideoResult:
         if not request.image_path.is_file():
@@ -75,21 +98,25 @@ class LTXVideoProvider:
             generator = None
             if request.seed is not None:
                 generator = torch.Generator(device="cpu").manual_seed(request.seed)
-            image = load_image(str(request.image_path))
-            result = pipeline(
-                image=image,
-                prompt=request.prompt,
-                width=request.metadata.get("width", 704),
-                height=request.metadata.get("height", 384),
-                num_frames=frames,
-                generator=generator,
-            )
-            frames_output = result.frames[0]
-            export_to_video(frames_output, str(request.output_path), fps=request.fps)
+            with torch.inference_mode():
+                image = load_image(str(request.image_path))
+                result = pipeline(
+                    image=image,
+                    prompt=request.prompt,
+                    width=request.metadata.get("width", 704),
+                    height=request.metadata.get("height", 384),
+                    num_frames=frames,
+                    generator=generator,
+                )
+                frames_output = result.frames[0]
+                export_to_video(frames_output, str(request.output_path), fps=request.fps)
+                del frames_output, result, image, generator
         except (OSError, RuntimeError, ValueError) as exc:
             raise VideoAgentError("LTX image-to-video generation failed") from exc
         except Exception as exc:
             raise VideoAgentError("LTX image-to-video generation failed") from exc
+        finally:
+            self._release_torch_memory()
 
         if not request.output_path.is_file() or request.output_path.stat().st_size == 0:
             raise VideoAgentError("LTX returned no usable video file")

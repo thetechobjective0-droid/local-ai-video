@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import gc
 import hashlib
 from pathlib import Path
 from time import monotonic
@@ -45,7 +46,31 @@ class DiffusersImageProvider:
             local_files_only=True,
             use_safetensors=True,
         )
-        return pipeline.to(self.device)
+        pipeline = pipeline.to(self.device)
+        # These features reduce peak activation memory without changing the model
+        # weights. They are capability-gated because not every Diffusers pipeline
+        # exposes every memory-saving hook.
+        if hasattr(pipeline, "enable_attention_slicing"):
+            pipeline.enable_attention_slicing("auto")
+        if hasattr(pipeline, "enable_vae_slicing"):
+            pipeline.enable_vae_slicing()
+        if hasattr(pipeline, "enable_vae_tiling"):
+            pipeline.enable_vae_tiling()
+        return pipeline
+
+    @staticmethod
+    def _release_torch_memory() -> None:
+        """Release Python references and opportunistically return accelerator cache."""
+        gc.collect()
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+        except (ImportError, AttributeError, RuntimeError):
+            pass
 
     def generate(self, request: ImageGenerationRequest) -> ImageResult:
         if not request.prompt.strip():
@@ -72,19 +97,23 @@ class DiffusersImageProvider:
             generator = None
             if request.seed is not None:
                 generator = torch.Generator(device="cpu").manual_seed(request.seed)
-            result = pipeline(
-                prompt=request.prompt,
-                negative_prompt=request.negative_prompt or None,
-                width=request.width,
-                height=request.height,
-                num_inference_steps=request.steps,
-                guidance_scale=request.guidance_scale,
-                generator=generator,
-            )
-            image = result.images[0]
-            image.save(output, format="PNG")
+            with torch.inference_mode():
+                result = pipeline(
+                    prompt=request.prompt,
+                    negative_prompt=request.negative_prompt or None,
+                    width=request.width,
+                    height=request.height,
+                    num_inference_steps=request.steps,
+                    guidance_scale=request.guidance_scale,
+                    generator=generator,
+                )
+                image = result.images[0]
+                image.save(output, format="PNG")
+                del image, result, generator
         except Exception as exc:
             raise VideoAgentError(f"local image generation failed: {exc}") from exc
+        finally:
+            self._release_torch_memory()
 
         if not output.is_file() or output.stat().st_size == 0:
             raise VideoAgentError("image provider produced an empty output")
