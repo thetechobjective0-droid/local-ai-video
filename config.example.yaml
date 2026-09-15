@@ -28,19 +28,20 @@ tts:
 video:
   # Real temporal AI video + synchronized native audio on Apple Silicon.
   provider: ltx2_mlx
-  engine_path: ./data/runtime/ltx-video-mlx
+  engine_path: ./data/runtime/ltx-2-mlx
+  model_path: ./data/models/ltx-2.3-mlx-q8
   uv_command: uv
+  low_ram: true
+  pipeline: two-stage
   bits: 8
   native_audio: true
   i2v_strength: 0.95
   allow_fallback: false
-  width: 768
-  height: 512
-  fps: 25
-  # LTX-2 MLX uses an 8-step distilled runtime; the remaining fields are
-  # retained for compatibility with the PyTorch LTX-Video provider.
+  width: 704
+  height: 480
+  fps: 24
   inference_steps: 8
-  guidance_scale: 1.0
+  guidance_scale: 3.0
   guidance_rescale: 0.0
   image_cond_noise_scale: 0.025
   decode_timestep: 0.05
