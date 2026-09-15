@@ -33,6 +33,23 @@ def _load_cached_video(manifest_path: Path, expected_key: str) -> Artifact | Non
     return artifact
 
 
+def _effective_motion_prompt(scene: Scene) -> str:
+    """Turn a terse storyboard motion instruction into a model-friendly shot prompt."""
+    prompt = scene.motion_prompt.strip()
+    visual = scene.visual_description.strip()
+    camera = scene.camera.strip()
+    composition = scene.composition.strip()
+    lighting = scene.lighting.strip()
+    parts = [part for part in (prompt, visual, camera, composition, lighting) if part]
+    base = ". ".join(parts)
+    quality = (
+        " Smooth cinematic motion, physically plausible movement, stable subject identity, "
+        "stable composition, coherent background geometry, natural temporal consistency, "
+        "subtle camera movement, realistic depth and lighting, no abrupt cuts within the shot."
+    )
+    return (base + quality).strip() if base else quality.strip()
+
+
 def generate_scene_video(
     provider: VideoProvider,
     store: FilesystemStore,
@@ -43,6 +60,12 @@ def generate_scene_video(
     height: int = 384,
     fps: int = 16,
     seed: int | None = None,
+    inference_steps: int = 40,
+    guidance_scale: float = 3.0,
+    guidance_rescale: float = 0.0,
+    image_cond_noise_scale: float = 0.025,
+    decode_timestep: float = 0.05,
+    decode_noise_scale: float | None = 0.025,
 ) -> tuple[Artifact, Scene]:
     """Generate a scene video and accept it only after deterministic QA."""
     directory = store.project_dir(project_id)
@@ -78,19 +101,26 @@ def generate_scene_video(
 
     provider_name = getattr(provider, "provider_name", provider.__class__.__name__)
     model_name = getattr(provider, "model_name", getattr(provider, "_model_name", "unknown"))
+    effective_prompt = _effective_motion_prompt(scene)
     generation_key = cache_key(
-        "scene-video-v1",
+        "scene-video-v2",
         {
             "image_sha256": image_sha256,
             "provider": provider_name,
             "model": model_name,
-            "prompt": scene.motion_prompt,
+            "prompt": effective_prompt,
             "negative_prompt": scene.negative_prompt,
             "duration_seconds": scene.duration_seconds,
             "fps": fps,
             "width": width,
             "height": height,
             "seed": seed,
+            "inference_steps": inference_steps,
+            "guidance_scale": guidance_scale,
+            "guidance_rescale": guidance_rescale,
+            "image_cond_noise_scale": image_cond_noise_scale,
+            "decode_timestep": decode_timestep,
+            "decode_noise_scale": decode_noise_scale,
         },
     )
 
@@ -110,7 +140,7 @@ def generate_scene_video(
         VideoGenerationRequest(
             image_path=image_path,
             output_path=output,
-            prompt=scene.motion_prompt,
+            prompt=effective_prompt,
             negative_prompt=scene.negative_prompt,
             duration_seconds=scene.duration_seconds,
             fps=fps,
@@ -120,6 +150,12 @@ def generate_scene_video(
                 "scene_index": scene.index,
                 "width": width,
                 "height": height,
+                "inference_steps": inference_steps,
+                "guidance_scale": guidance_scale,
+                "guidance_rescale": guidance_rescale,
+                "image_cond_noise_scale": image_cond_noise_scale,
+                "decode_timestep": decode_timestep,
+                "decode_noise_scale": decode_noise_scale,
             },
         )
     )
@@ -152,7 +188,7 @@ def generate_scene_video(
             "width": result.width,
             "height": result.height,
             "seed": seed,
-            "prompt": scene.motion_prompt,
+            "prompt": effective_prompt,
             "negative_prompt": scene.negative_prompt,
             "cache_key": generation_key,
             "qa": qa,
