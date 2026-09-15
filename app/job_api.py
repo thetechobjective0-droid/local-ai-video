@@ -12,17 +12,12 @@ from app.generation.image_recovery import generate_scene_image_with_recovery
 from app.generation.video_recovery import generate_scene_video_with_recovery
 from app.models.project import ProjectStatus, VideoProject
 from app.models.scene import Scene
-from app.orchestrator.jobs import (
-    MediaJobManager,
-    _finalize_project_media,
-    get_job_manager,
-)
+from app.orchestrator.jobs import MediaJobManager, _finalize_project_media, get_job_manager
 from app.orchestrator.regeneration import clear_scene_stage_outputs, invalidate_scene_dependencies
 from app.providers.diffusers_image import DiffusersImageProvider
 from app.providers.factory import build_video_provider
 from app.providers.macos_tts import MacOSTTSProvider
 from app.storage.filesystem import FilesystemStore
-from app.providers.capabilities import get_provider_capabilities
 
 router = APIRouter()
 
@@ -55,7 +50,7 @@ def _manager() -> MediaJobManager:
 
 
 def _planning_manager():
-    from app.orchestrator.planning_jobs import PlanningJobManager, get_planning_job_manager
+    from app.orchestrator.planning_jobs import get_planning_job_manager
 
     return get_planning_job_manager(_store())
 
@@ -124,20 +119,21 @@ def regenerate_scene(
     project_id: UUID, scene_id: UUID, request: RegenerateSceneRequest
 ) -> dict[str, Any]:
     """Regenerate a scene and every artifact downstream of the requested stage."""
+    requested_stage = request.stage
     config = load_config(None)
     if not config.runtime.local_only:
         raise HTTPException(status_code=503, detail="local_only must remain enabled")
     store = FilesystemStore(config.storage.root)
     scene = _scene(store, project_id, scene_id)
-    removed = invalidate_scene_dependencies(store, project_id, scene.id if False else scene.index, request.stage)
-    scene = clear_scene_stage_outputs(scene, request.stage)
+    removed = invalidate_scene_dependencies(store, project_id, scene.index, requested_stage)
+    scene = clear_scene_stage_outputs(scene, requested_stage)
     _persist_scene(store, project_id, scene)
 
     regenerated: list[str] = []
     attempts = 0
     strategies: list[str] = []
     try:
-        if request.stage == "image":
+        if requested_stage == "image":
             image_provider = DiffusersImageProvider(
                 config.image.model_path, device=config.image.device
             )
@@ -167,24 +163,9 @@ def regenerate_scene(
             regenerated.append("image")
             attempts = image_result.attempts
             strategies.extend(image_result.strategies)
-            request = request.model_copy(update={"stage": "video"})
             scene = clear_scene_stage_outputs(scene, "video")
             _persist_scene(store, project_id, scene)
 
-        if request.stage == "audio":
-            audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
-            _, scene = generate_scene_audio(
-                audio_provider,
-                store,
-                project_id,
-                scene,
-                voice=config.tts.voice,
-                rate=config.tts.rate,
-            )
-            regenerated.append("audio")
-            attempts = max(attempts, 1)
-            strategies.append("original")
-        elif request.stage == "video":
             video_provider = build_video_provider(config)
             video_result = generate_scene_video_with_recovery(
                 video_provider,
@@ -209,6 +190,44 @@ def regenerate_scene(
             regenerated.append("video")
             attempts = max(attempts, video_result.attempts)
             strategies.extend(video_result.strategies)
+        elif requested_stage == "audio":
+            audio_provider = MacOSTTSProvider(sample_rate=config.tts.sample_rate)
+            _, scene = generate_scene_audio(
+                audio_provider,
+                store,
+                project_id,
+                scene,
+                voice=config.tts.voice,
+                rate=config.tts.rate,
+            )
+            regenerated.append("audio")
+            attempts = 1
+            strategies = ["original"]
+        else:
+            video_provider = build_video_provider(config)
+            video_result = generate_scene_video_with_recovery(
+                video_provider,
+                store,
+                project_id,
+                scene,
+                width=config.video.width,
+                height=config.video.height,
+                fps=config.video.fps,
+            )
+            scene = video_result.scene.model_copy(
+                update={
+                    "metadata": {
+                        **video_result.scene.metadata,
+                        "video_recovery": {
+                            "attempts": video_result.attempts,
+                            "strategies": list(video_result.strategies),
+                        },
+                    }
+                }
+            )
+            regenerated.append("video")
+            attempts = video_result.attempts
+            strategies = list(video_result.strategies)
 
         _persist_scene(store, project_id, scene)
         _finalize_project_media(store, project_id)
@@ -218,7 +237,7 @@ def regenerate_scene(
 
     return {
         "scene": scene.model_dump(mode="json"),
-        "requested_stage": request.stage,
+        "requested_stage": requested_stage,
         "regenerated_stages": regenerated,
         "removed_artifacts": removed,
         "attempts": attempts,
