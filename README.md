@@ -4,7 +4,7 @@ A local-only AI video production pipeline designed for Apple Silicon, initially 
 
 ## Current video architecture
 
-The production default now generates **real temporal AI video**, not a slideshow or Ken-Burns animation:
+The production default generates **real temporal AI video**, not a slideshow or Ken-Burns animation:
 
 ```text
 User prompt
@@ -16,7 +16,28 @@ User prompt
   -> FFmpeg final MP4
 ```
 
-The default Apple-Silicon provider is `ltx2_mlx`. It uses the local `dgrauet/ltx-2-mlx` implementation, q8 weights, a two-stage pipeline, and low-memory streaming by default. The older PyTorch `ltx_video` adapter remains available, and `ffmpeg_ken_burns` is an explicit deterministic fallback only.
+The default Apple-Silicon provider is `ltx2_mlx`. The older PyTorch `ltx_video` adapter remains available, and `ffmpeg_ken_burns` is an explicit deterministic fallback only.
+
+## One-command local setup
+
+On the target Apple-Silicon Mac, use:
+
+```bash
+./run.sh
+```
+
+`run.sh` checks the local macOS/arm64 prerequisites, syncs this application's Python environment, clones and syncs the LTX-2.3 MLX runtime into `data/runtime/ltx-2-mlx` when it is missing, validates the local runtime/model directories, checks Ollama, and starts the browser dashboard.
+
+The script never downloads model weights for you. Prepare the local LTX-2.3 q8 model pack at `data/models/ltx-2.3-mlx-q8` according to `docs/ltx2-mlx.md` before the first generation run.
+
+Environment overrides are supported for the runtime/model locations:
+
+```bash
+LTX_RUNTIME_DIR=/custom/ltx-2-mlx \
+LTX_RUNTIME_REPO=https://github.com/appautomaton/ltx-video-mlx.git \
+LTX_MODEL_DIR=/custom/ltx-2.3-mlx-q8 \
+./run.sh
+```
 
 ## Local-only runtime
 
@@ -24,16 +45,19 @@ All inference and media processing run locally. No prompts, media, artifacts, lo
 
 The LTX-2.3 MLX runtime is an external local dependency because it uses a separate Apple-Silicon MLX environment. The application invokes it with `uv run --offline`, so generation cannot silently install or download dependencies.
 
-### Prepare the LTX-2.3 MLX runtime
+### Manual runtime setup
+
+When `run.sh` is not used:
 
 ```bash
 mkdir -p data/runtime
-git clone https://github.com/dgrauet/ltx-2-mlx.git data/runtime/ltx-2-mlx
+git clone https://github.com/appautomaton/ltx-video-mlx.git data/runtime/ltx-2-mlx
 cd data/runtime/ltx-2-mlx
-uv sync --all-extras
+uv sync
+cd ../..
 ```
 
-Prepare a local q8 model pack at `data/models/ltx-2.3-mlx-q8`. The MLX runtime documents Apple-Silicon support, real I2V, synchronized audio, and q8 operation on systems in the 32 GB+ class. See `docs/ltx2-mlx.md` for the application contract.
+Prepare the local LTX-2.3 weights inside that runtime following `docs/ltx2-mlx.md`.
 
 ### Configuration
 
@@ -47,6 +71,7 @@ video:
   pipeline: two-stage
   bits: 8
   native_audio: true
+  i2v_strength: 0.95
   allow_fallback: false
   width: 704
   height: 480
