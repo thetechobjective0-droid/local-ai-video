@@ -51,14 +51,10 @@ class MediaJob(BaseModel):
     completed_scenes: int = 0
 
 
-def _build_image_provider_if_needed(
-    config: AppConfig, scenes: List[Scene]
-) -> ImageProvider | None:
+def _build_image_provider_if_needed(config: AppConfig, scenes: List[Scene]) -> ImageProvider | None:
     """Construct Diffusers only when a scene still needs an image asset."""
     if not any(scene.image_asset is None for scene in scenes):
-        logger.info(
-            "[media] all scenes already have image assets; image provider not required"
-        )
+        logger.info("[media] all scenes already have image assets; image provider not required")
         return None
     logger.info(
         "[media] initializing image provider model=%s because image assets are missing",
@@ -74,9 +70,7 @@ def _audio_is_usable(store: FilesystemStore, project_id: UUID, scene: Scene) -> 
     directory = store.project_dir(project_id)
     manifest_path = directory / f"scene-{scene.index:04d}-audio.json"
     try:
-        artifact = Artifact.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
-        )
+        artifact = Artifact.model_validate_json(manifest_path.read_text(encoding="utf-8"))
         if artifact.id != scene.audio_asset:
             return False
         path = artifact.path.expanduser()
@@ -127,9 +121,7 @@ def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
         if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
             continue
         try:
-            scenes.append(
-                Scene.model_validate_json(path.read_text(encoding="utf-8"))
-            )
+            scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
         except (OSError, ValueError):
             continue
     if not scenes:
@@ -139,9 +131,7 @@ def _finalize_project_media(store: FilesystemStore, project_id: UUID) -> None:
     from app.models.timeline import Timeline
 
     timeline_path = store.project_dir(project_id) / "timeline.json"
-    timeline = Timeline.model_validate_json(
-        timeline_path.read_text(encoding="utf-8")
-    )
+    timeline = Timeline.model_validate_json(timeline_path.read_text(encoding="utf-8"))
     FFmpegRenderer().render(store, project_id, timeline)
     report = validate_project(store, project_id)
     write_qa_report(store.project_dir(project_id) / "qa-report.json", report)
@@ -177,9 +167,7 @@ class MediaJobManager:
 
     def _save(self, job: MediaJob) -> MediaJob:
         path = self._path(job.id)
-        payload = (
-            json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
-        )
+        payload = json.dumps(job.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
         with tempfile.NamedTemporaryFile(
             mode="w",
             encoding="utf-8",
@@ -197,9 +185,7 @@ class MediaJobManager:
         jobs_dir = self.store.root / "jobs"
         for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
             try:
-                job = MediaJob.model_validate_json(
-                    path.read_text(encoding="utf-8")
-                )
+                job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             if job.state in {"queued", "running"}:
@@ -229,9 +215,7 @@ class MediaJobManager:
         result: List[MediaJob] = []
         for path in sorted(jobs_dir.glob("*.json") if jobs_dir.exists() else []):
             try:
-                job = MediaJob.model_validate_json(
-                    path.read_text(encoding="utf-8")
-                )
+                job = MediaJob.model_validate_json(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 continue
             if project_id is None or job.project_id == project_id:
@@ -268,23 +252,17 @@ class MediaJobManager:
             if path.name.endswith(("-image.json", "-audio.json", "-video.json")):
                 continue
             try:
-                scenes.append(
-                    Scene.model_validate_json(path.read_text(encoding="utf-8"))
-                )
+                scenes.append(Scene.model_validate_json(path.read_text(encoding="utf-8")))
             except (OSError, ValueError):
                 logger.warning("[media] skipping invalid scene file=%s", path.name)
-        logger.info(
-            "[media] loaded scenes project=%s count=%s", project_id, len(scenes)
-        )
+        logger.info("[media] loaded scenes project=%s count=%s", project_id, len(scenes))
         if not scenes:
             raise ValueError(f"no scenes found: {project_id}")
         return scenes
 
     def _update(self, job_id: UUID, **changes: object) -> MediaJob:
         current = self.get(job_id)
-        updated = current.model_copy(
-            update={**changes, "updated_at": datetime.now(timezone.utc)}
-        )
+        updated = current.model_copy(update={**changes, "updated_at": datetime.now(timezone.utc)})
         logger.info(
             "[media] job=%s state=%s progress=%s/%s",
             job_id,
@@ -314,12 +292,8 @@ class MediaJobManager:
             )
             if not config.runtime.local_only:
                 raise ValueError("local_only must remain enabled")
-            scenes = _ensure_project_audio(
-                self.store, job.project_id, scenes, config
-            )
-            logger.info(
-                "[media] initializing video provider=%s", config.video.provider
-            )
+            scenes = _ensure_project_audio(self.store, job.project_id, scenes, config)
+            logger.info("[media] initializing video provider=%s", config.video.provider)
             video_provider = build_video_provider(config)
             image_provider = _build_image_provider_if_needed(config, scenes)
             capability = get_provider_capabilities(config.video.provider).video
@@ -332,9 +306,7 @@ class MediaJobManager:
                     completed,
                     total,
                 )
-                self._update(
-                    job_id, completed_scenes=completed, scene_count=total
-                )
+                self._update(job_id, completed_scenes=completed, scene_count=total)
 
             logger.info("[media] generation START job=%s", job_id)
             generate_project_media(
@@ -363,21 +335,13 @@ class MediaJobManager:
                 completed_scenes=job.scene_count,
                 completed_at=datetime.now(timezone.utc),
             )
-            logger.info(
-                "[media] worker COMPLETE job=%s project=%s", job.id, job.project_id
-            )
+            logger.info("[media] worker COMPLETE job=%s project=%s", job.id, job.project_id)
         except Exception as exc:
             logger.exception(
-                "[media] worker FAILED job=%s project=%s error=%s",
-                job.id,
-                job.project_id,
-                exc,
+                "[media] worker FAILED job=%s project=%s error=%s", job.id, job.project_id, exc
             )
             self._update(
-                job_id,
-                state="failed",
-                error=str(exc),
-                completed_at=datetime.now(timezone.utc),
+                job_id, state="failed", error=str(exc), completed_at=datetime.now(timezone.utc)
             )
         finally:
             with self._lock:
